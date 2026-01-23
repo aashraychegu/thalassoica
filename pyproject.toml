@@ -1,0 +1,18 @@
+[project]
+name = "overlapping-sea-ice-satellite-imagery-constraint-solver"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cmake>=4.2.1",
+    "numpy>=2.4.1",
+    "pandas>=3.0.0",
+    "polars>=1.37.1",
+    "pyarrow==18.1.0",
+    "pystac-client>=0.9.0",
+    "pytz>=2025.2",
+    "sentinelsat>=1.2.1",
+    "shapely>=2.1.2",
+    "tqdm>=4.67.1",
+]
