@@ -1,6 +1,3 @@
-"""
-Get ALL Sentinel-1 metadata - split by year to avoid pagination issues
-"""
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pystac_client
@@ -10,11 +7,11 @@ from datetime import datetime, timezone
 from tqdm import tqdm
 import os
 
-bbox = [-180, -90, 180, -50]
+bbox = [-180, -80, 180, -50]
 batch_size = 5000
 
 print("="*60)
-print("Sentinel-1 Southern Ocean - Time-Split Download")
+print("Sentinel-1 Southern Ocean - Download to Parquet")
 print("="*60)
 
 catalog = pystac_client.Client.open(
@@ -38,9 +35,13 @@ schema = pa.schema([
 ])
 
 output_file = 'intermediates/shapes/grd-sentinel1_southern_ocean_all.parquet'
+
+# Ensure directory exists
+os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
 writer = pq.ParquetWriter(output_file, schema, compression='snappy')
 
-# Split into 6-month chunks
+# Time ranges
 time_ranges = [
     ("2014-04-01", "2014-12-31"),
     ("2015-01-01", "2015-06-30"),
@@ -70,14 +71,12 @@ time_ranges = [
 def clean_geometry(geom_dict):
     """Clean malformed MultiPolygon geometries"""
     if geom_dict['type'] == 'MultiPolygon':
-        # Filter out empty arrays
         coords = geom_dict['coordinates']
         cleaned = [poly for poly in coords if poly and len(poly) > 0 and poly[0]]
         
         if not cleaned:
             return None
         
-        # If only one polygon remains, convert to Polygon
         if len(cleaned) == 1:
             return {
                 'type': 'Polygon',
@@ -150,7 +149,6 @@ for start_date, end_date in time_ranges:
         
         except Exception as e:
             print(f"\n  Error processing item {item.id}: {e}")
-            print(f"  Geometry: {item.geometry}")
             skipped_records += 1
             pbar.update(1)
             continue
@@ -175,26 +173,7 @@ if skipped_records > 0:
 if os.path.exists(output_file):
     file_size_mb = os.path.getsize(output_file) / (1024**2)
     print(f"File size: {file_size_mb:.2f} MB")
-
-# Verification
-import duckdb
-con = duckdb.connect()
-result = con.execute(f"""
-    SELECT 
-        COUNT(*) as total,
-        COUNT(DISTINCT id) as unique_ids,
-        MIN(datetime) as first,
-        MAX(datetime) as last,
-        COUNT(DISTINCT platform) as platforms
-    FROM read_parquet('{output_file}')
-""").fetchone()
-
-print(f"\nVerified: {result[0]:,} records ({result[1]:,} unique)")
-print(f"Date range: {result[2]} to {result[3]}")
-print(f"Platforms: {result[4]}")
+    print(f"Output file: {output_file}")
 
 if skipped_records > 0:
-    print(f"\nNote: {skipped_records:,} records were skipped due to malformed geometries")
-    print(f"Success rate: {total_records/(total_records+skipped_records)*100:.2f}%")
-
-con.close()
+    print(f"\nSuccess rate: {total_records/(total_records+skipped_records)*100:.2f}%")
