@@ -15,4 +15,5 @@ dependencies = [
     "pyarrow==22.0.0",
     "ipykernel",
     "duckdb==1.4.4",
+    "pyfiglet>=1.0.4",
 ]

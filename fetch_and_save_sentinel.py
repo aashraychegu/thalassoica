@@ -9,23 +9,23 @@ from tqdm import tqdm
 import pyarrow as pa
 import pyarrow.parquet as pq
 import json
+import argparse
 from typing import Optional, Dict, Any, List, Tuple
 
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
 
-START_DATE = datetime(2014, 1, 1, tzinfo=timezone.utc)
-END_DATE = datetime.now(timezone.utc)
-AREA_OF_INTEREST_WKT = "POLYGON((-180 -80, 180 -80, 180 -60, -180 -60, -180 -80))"
-OUTPUT_DIR = Path("intermediates/shapes/sentinel")
-OUTPUT_PARQUET_FILE = OUTPUT_DIR / f"sentinel_{START_DATE.strftime('%Y%m%d')}_to_{END_DATE.strftime('%Y%m%d')}.parquet"
+DEFAULT_START_DATE = datetime(2014, 1, 1, tzinfo=timezone.utc)
+DEFAULT_END_DATE = datetime.now(timezone.utc)
+DEFAULT_AREA_OF_INTEREST_WKT = "POLYGON((-180 -80, 180 -80, 180 -60, -180 -60, -180 -80))"
+DEFAULT_OUTPUT_DIR = Path("intermediates/shapes/sentinel")
 API_URL_BASE = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
-ITEMS_PER_REQUEST = 1000
-NUM_WORKERS = 16
-RETRY_ATTEMPTS = 3
-RETRY_DELAY = 1
-DAYS_PER_CHUNK = 2
+DEFAULT_ITEMS_PER_REQUEST = 1000
+DEFAULT_NUM_WORKERS = 16
+DEFAULT_RETRY_ATTEMPTS = 3
+DEFAULT_RETRY_DELAY = 1
+DEFAULT_DAYS_PER_CHUNK = 2
 
 SCHEMA = pa.schema([
     ('id', pa.string()),
@@ -111,7 +111,7 @@ def parse_data_fast(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 # HELPERS
 # ==============================================================================
 
-def generate_date_chunks(start_date: datetime, end_date: datetime, days_per_chunk: int = DAYS_PER_CHUNK) -> List[Tuple[datetime, datetime]]:
+def generate_date_chunks(start_date: datetime, end_date: datetime, days_per_chunk: int = DEFAULT_DAYS_PER_CHUNK) -> List[Tuple[datetime, datetime]]:
     """Pre-generate all chunks as a list for better memory access"""
     chunks = []
     current_start = start_date
@@ -121,7 +121,7 @@ def generate_date_chunks(start_date: datetime, end_date: datetime, days_per_chun
         current_start = current_end
     return chunks
 
-def make_request_with_retry(url: str, session: requests.Session, attempts: int = RETRY_ATTEMPTS, delay: int = RETRY_DELAY) -> Optional[requests.Response]:
+def make_request_with_retry(url: str, session: requests.Session, attempts: int = DEFAULT_RETRY_ATTEMPTS, delay: int = DEFAULT_RETRY_DELAY) -> Optional[requests.Response]:
     """Retry logic with session reuse"""
     for attempt in range(attempts):
         try:
@@ -154,6 +154,10 @@ def clean_footprint_fast(footprint: str) -> Optional[str]:
 # WORKER - OPTIMIZED
 # ==============================================================================
 
+# Global variables for worker configuration
+WORKER_ITEMS_PER_REQUEST = DEFAULT_ITEMS_PER_REQUEST
+WORKER_AREA_OF_INTEREST_WKT = DEFAULT_AREA_OF_INTEREST_WKT
+
 def fetch_and_process_chunk(date_chunk: Tuple[datetime, datetime]) -> Optional[pa.Table]:
     """Optimized worker with session reuse and minimal allocations"""
     chunk_start, chunk_end = date_chunk
@@ -167,9 +171,9 @@ def fetch_and_process_chunk(date_chunk: Tuple[datetime, datetime]) -> Optional[p
         f"$filter=Collection/Name eq 'SENTINEL-1' "
         f"and ContentDate/Start ge {chunk_start:%Y-%m-%dT%H:%M:%S.%fZ} "
         f"and ContentDate/Start lt {chunk_end:%Y-%m-%dT%H:%M:%S.%fZ} "
-        f"and OData.CSC.Intersects(area=geography'SRID=4326;{AREA_OF_INTEREST_WKT}')"
+        f"and OData.CSC.Intersects(area=geography'SRID=4326;{WORKER_AREA_OF_INTEREST_WKT}')"
         "&$orderby=ContentDate/Start asc"
-        f"&$top={ITEMS_PER_REQUEST}"
+        f"&$top={WORKER_ITEMS_PER_REQUEST}"
         "&$expand=Attributes"
     )
     
@@ -214,10 +218,10 @@ def fetch_and_process_chunk(date_chunk: Tuple[datetime, datetime]) -> Optional[p
             }
             rows.append(row)
 
-        offset += ITEMS_PER_REQUEST
+        offset += WORKER_ITEMS_PER_REQUEST
         
         # Early exit if we got fewer items than requested
-        if len(items) < ITEMS_PER_REQUEST:
+        if len(items) < WORKER_ITEMS_PER_REQUEST:
             break
 
     if not rows:
@@ -227,10 +231,71 @@ def fetch_and_process_chunk(date_chunk: Tuple[datetime, datetime]) -> Optional[p
     return pa.Table.from_pylist(rows, schema=SCHEMA)
 
 # ==============================================================================
+# ARGUMENT PARSING
+# ==============================================================================
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Fetch Sentinel-1 data from Copernicus Data Space')
+    
+    parser.add_argument('--start-date', type=str, 
+                        default=DEFAULT_START_DATE.strftime('%Y-%m-%d'),
+                        help=f'Start date (YYYY-MM-DD) (default: {DEFAULT_START_DATE.strftime("%Y-%m-%d")})')
+    
+    parser.add_argument('--end-date', type=str,
+                        default=DEFAULT_END_DATE.strftime('%Y-%m-%d'),
+                        help='End date (YYYY-MM-DD) (default: today)')
+    
+    parser.add_argument('--area-wkt', type=str,
+                        default=DEFAULT_AREA_OF_INTEREST_WKT,
+                        help='Area of interest as WKT POLYGON (default: Antarctic region)')
+    
+    parser.add_argument('--output-dir', type=str,
+                        default=str(DEFAULT_OUTPUT_DIR),
+                        help=f'Output directory (default: {DEFAULT_OUTPUT_DIR})')
+    
+    parser.add_argument('--output-file', type=str,
+                        help='Output parquet filename (default: auto-generated from dates)')
+    
+    parser.add_argument('--workers', type=int,
+                        default=DEFAULT_NUM_WORKERS,
+                        help=f'Number of worker processes (default: {DEFAULT_NUM_WORKERS})')
+    
+    parser.add_argument('--days-per-chunk', type=int,
+                        default=DEFAULT_DAYS_PER_CHUNK,
+                        help=f'Days per chunk (default: {DEFAULT_DAYS_PER_CHUNK})')
+    
+    parser.add_argument('--items-per-request', type=int,
+                        default=DEFAULT_ITEMS_PER_REQUEST,
+                        help=f'Items per API request (default: {DEFAULT_ITEMS_PER_REQUEST})')
+    
+    return parser.parse_args()
+
+# ==============================================================================
 # MAIN
 # ==============================================================================
 
 if __name__ == "__main__":
+    args = parse_args()
+    
+    # Parse dates
+    START_DATE = datetime.strptime(args.start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    END_DATE = datetime.strptime(args.end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    AREA_OF_INTEREST_WKT = args.area_wkt
+    OUTPUT_DIR = Path(args.output_dir)
+    NUM_WORKERS = args.workers
+    DAYS_PER_CHUNK = args.days_per_chunk
+    ITEMS_PER_REQUEST = args.items_per_request
+    
+    # Set global worker variables
+    WORKER_ITEMS_PER_REQUEST = ITEMS_PER_REQUEST
+    WORKER_AREA_OF_INTEREST_WKT = AREA_OF_INTEREST_WKT
+    
+    # Determine output file
+    if args.output_file:
+        OUTPUT_PARQUET_FILE = OUTPUT_DIR / args.output_file
+    else:
+        OUTPUT_PARQUET_FILE = OUTPUT_DIR / f"sentinel_{START_DATE.strftime('%Y%m%d')}_to_{END_DATE.strftime('%Y%m%d')}.parquet"
+    
     OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
     
     # Pre-generate all tasks
@@ -238,10 +303,11 @@ if __name__ == "__main__":
     
     print(f"Date range: {START_DATE.date()} to {END_DATE.date()}")
     print(f"Chunks: {len(tasks)} ({NUM_WORKERS} workers, {DAYS_PER_CHUNK} days/chunk)")
+    print(f"Output: {OUTPUT_PARQUET_FILE}")
     
     total_items = 0
     
-    with pq.ParquetWriter(OUTPUT_PARQUET_FILE, SCHEMA,compression="GZIP") as writer:
+    with pq.ParquetWriter(OUTPUT_PARQUET_FILE, SCHEMA, compression="GZIP") as writer:
         # Use maxtasksperchild to prevent memory leaks
         with multiprocessing.Pool(processes=NUM_WORKERS, maxtasksperchild=100) as pool:
             # imap_unordered is faster than map
@@ -252,4 +318,4 @@ if __name__ == "__main__":
                     writer.write_table(table)
                     total_items += len(table)
     
-    print(f"\n✅ Wrote {total_items} items to '{OUTPUT_PARQUET_FILE}'")
+    print(f"Total items written: {total_items}")
