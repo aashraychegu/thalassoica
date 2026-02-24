@@ -102,6 +102,18 @@ wheels = [
 ]
 
 [[package]]
+name = "click"
+version = "8.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/fa/656b739db8587d7b5dfa22e22ed02566950fbfbcdc20311993483657a5c0/click-8.3.1.tar.gz", hash = "sha256:12ff4785d337a1bb490bb7e9c2b1ee5da3112e94a8622f26a6c77f5d2fc6842a", size = 295065, upload-time = "2025-11-15T20:45:42.706Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl", hash = "sha256:981153a64e25f12d547d3426c367a4857371575ee7ad18df2a6183ab0545b2a6", size = 108274, upload-time = "2025-11-15T20:45:41.139Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -139,6 +151,17 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/43/fa/6d96a0978d19e17b68d634497769987b16c8f4cd0a7a05048bec693caa6b/decorator-5.2.1.tar.gz", hash = "sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360", size = 56711, upload-time = "2025-02-24T04:41:34.073Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4e/8c/f3147f5c4b73e7550fe5f9352eaa956ae838d5c51eb58e7a25b9f3e2643b/decorator-5.2.1-py3-none-any.whl", hash = "sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a", size = 9190, upload-time = "2025-02-24T04:41:32.565Z" },
+]
+
+[[package]]
+name = "dotenv"
+version = "0.9.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dotenv" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/b7/545d2c10c1fc15e48653c91efde329a790f2eecfbbf2bd16003b5db2bab0/dotenv-0.9.9-py2.py3-none-any.whl", hash = "sha256:29cf74a087b31dafdb5a446b6d7e11cbce8ed2741540e2339c69fbef92c94ce9", size = 1892, upload-time = "2025-02-19T22:15:01.647Z" },
 ]
 
 [[package]]
@@ -354,30 +377,36 @@ name = "overlapping-sea-ice-satellite-imagery-constraint-solver"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "dotenv" },
     { name = "duckdb" },
     { name = "ipykernel" },
     { name = "numpy" },
     { name = "postgis" },
     { name = "psycopg2" },
     { name = "pyarrow" },
+    { name = "pycurl" },
     { name = "pyfiglet" },
     { name = "pystac" },
     { name = "pystac-client" },
+    { name = "python-dotenv", extra = ["cli"] },
     { name = "shapely" },
     { name = "tqdm" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "dotenv", specifier = ">=0.9.9" },
     { name = "duckdb", specifier = "==1.4.4" },
     { name = "ipykernel" },
     { name = "numpy", specifier = ">=2.4.1" },
     { name = "postgis", specifier = ">=1.0.4" },
     { name = "psycopg2", specifier = ">=2.9.11" },
     { name = "pyarrow", specifier = "==22.0.0" },
+    { name = "pycurl", specifier = ">=7.45.7" },
     { name = "pyfiglet", specifier = ">=1.0.4" },
     { name = "pystac", specifier = ">=1.14.3" },
     { name = "pystac-client", specifier = ">=0.9.0" },
+    { name = "python-dotenv", extras = ["cli"], specifier = ">=1.2.1" },
     { name = "shapely", specifier = ">=2.1.2" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]
@@ -523,6 +552,26 @@ wheels = [
 ]
 
 [[package]]
+name = "pycurl"
+version = "7.45.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/3d/01255f1cde24401f54bb3727d0e5d3396b67fc04964f287d5d473155f176/pycurl-7.45.7.tar.gz", hash = "sha256:9d43013002eab2fd6d0dcc671cd1e9149e2fc1c56d5e796fad94d076d6cb69ef", size = 241098, upload-time = "2025-09-24T13:37:17.067Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/85/bb/18c4e53ef9a8d52451336aae1e44768dfb639ba46dd02f331c5dc9220bc3/pycurl-7.45.7-cp314-cp314-macosx_10_13_x86_64.whl", hash = "sha256:6157ac0daf30ffc28446c54ebbd073c8c11b45cba9c45256619e218a07a31312", size = 3794861, upload-time = "2025-09-24T13:36:40.509Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/23/ea963df437b8b0fd4e2ff5909dbfd800364231a95588de2b6446ffbdd1c8/pycurl-7.45.7-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:09ac9a855273a77f7c6a72f05be430646c47a298d403a75876c2188ea5d77534", size = 3903002, upload-time = "2025-09-24T13:36:42.765Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/33/6432144d3961ff862c1ac933f4851828f8947d615aa46b50b91162224af9/pycurl-7.45.7-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:0263e94d2ea3cd25b5fcf96527f521dc29b8a73a9b19e71223b6e2452f5cb35a", size = 5186571, upload-time = "2025-09-24T13:36:44.584Z" },
+    { url = "https://files.pythonhosted.org/packages/44/91/635beb1e8c5a8b2a031fb09bd64e5c2abd332cebb9211739539ab385e731/pycurl-7.45.7-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:54cffa56a5ead14915f1f0d3e8fabf6fcea3056a8e5f971fc1caebb9715bd9b1", size = 4891741, upload-time = "2025-09-24T13:36:46.7Z" },
+    { url = "https://files.pythonhosted.org/packages/77/bd/51ffbf6c4a3c5bcdad2f3175c5b5980fff4dd668e2556593530030430fcf/pycurl-7.45.7-cp314-cp314-win32.whl", hash = "sha256:09e426cf5e61e5b37c30903734204f75023baa6e4bfe574e037f12e53ec3f0ba", size = 2817391, upload-time = "2025-09-24T13:36:48.766Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/68/c7c7f4b2372568eff3a12046364fdd74e382778563ee26727a1b016702bc/pycurl-7.45.7-cp314-cp314-win_amd64.whl", hash = "sha256:8eab3a83670d83966c7a0df4fa02cf2272499966066bfaa810444c427cb653b0", size = 3403530, upload-time = "2025-09-24T13:36:50.825Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/66/b65ae067433f37fd4c2b89aec9b0ab31b35cd3846e77854e7ec47bfb9d13/pycurl-7.45.7-cp314-cp314t-macosx_10_13_x86_64.whl", hash = "sha256:69f16d6709f3305da1043ee9edb5e1715212b75011779d58c4bd8fc9ad9fc88a", size = 3798020, upload-time = "2025-09-24T13:36:53.259Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/31/af6edb607b7d359b54df63ee561650fe7f94347f86e7c600e0042af595cc/pycurl-7.45.7-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:435f140afa59eb0cece57e6364348977af768add452d49a8547a26fc90dc2bfa", size = 3905273, upload-time = "2025-09-24T13:36:55.386Z" },
+    { url = "https://files.pythonhosted.org/packages/79/35/4825905afb55037db15d2d2c9a45253ca8951559ef5f62afd277c98d1ec2/pycurl-7.45.7-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:ff50a3d787c3d059f330d7cb7325b40416bcb0f43f5006b396a6e61871df0ebf", size = 5247322, upload-time = "2025-09-24T13:36:57.568Z" },
+    { url = "https://files.pythonhosted.org/packages/28/fc/716a3e9d335aa12f09471842e49e3db9eb792a06ddc6203a6fb1b90b7f7a/pycurl-7.45.7-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:5ed0cab4e05558ba112111585ae2a85627ab48d6185547fc4ba8ec8e2cfecd0d", size = 4947252, upload-time = "2025-09-24T13:36:59.26Z" },
+    { url = "https://files.pythonhosted.org/packages/43/05/b8274ad3740b76f029031921b1831f9a7f9fdc419333c85488b25dcde87a/pycurl-7.45.7-cp314-cp314t-win32.whl", hash = "sha256:e79f90c0af413933dedc79a1717f49076f08b32ff4a42776d6c38ba37125717e", size = 2824929, upload-time = "2025-09-24T13:37:01.665Z" },
+    { url = "https://files.pythonhosted.org/packages/70/c1/3982528967a42eff566d7e94fce0c8a0cf293c398a38465f87709440f260/pycurl-7.45.7-cp314-cp314t-win_amd64.whl", hash = "sha256:bdb72c53445b1c09315940c81a14a3635dfde6710aea703976ce9617209830e7", size = 3412632, upload-time = "2025-09-24T13:37:03.852Z" },
+]
+
+[[package]]
 name = "pyfiglet"
 version = "1.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -581,6 +630,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
+]
+
+[[package]]
+name = "python-dotenv"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/26/19cadc79a718c5edbec86fd4919a6b6d3f681039a2f6d66d14be94e75fb9/python_dotenv-1.2.1.tar.gz", hash = "sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6", size = 44221, upload-time = "2025-10-26T15:12:10.434Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/1b/a298b06749107c305e1fe0f814c6c74aea7b2f1e10989cb30f544a1b3253/python_dotenv-1.2.1-py3-none-any.whl", hash = "sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61", size = 21230, upload-time = "2025-10-26T15:12:09.109Z" },
+]
+
+[package.optional-dependencies]
+cli = [
+    { name = "click" },
 ]
 
 [[package]]
