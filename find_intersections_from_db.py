@@ -8,9 +8,6 @@ import json
 def bigtext(string):
     print(pyfiglet.figlet_format(string, font="slant", width=160))
 
-def print_section(title):
-    print(f"\n{'='*80}\n  {title}\n{'='*80}\n")
-
 def get_table_columns(db_path, table_name):
     """Query database to get all column names from the table"""
     result = subprocess.run(
@@ -35,6 +32,18 @@ def get_table_columns(db_path, table_name):
     return columns
 
 # ==============================================================================
+# CONFIGURATION - ALWAYS INCLUDED COLUMNS
+# ==============================================================================
+
+ALWAYS_INCLUDED = {
+    'id': 's.id as id',
+    'geometry': 's.geometry as geometry',
+    'datetime_start': 's.datetime_start as datetime_start',
+    'cyclone_id': 'p.point_id as cyclone_id',
+    'cyclone_datetime': 'p.datetime_start as cyclone_datetime'
+}
+
+# ==============================================================================
 # ARGUMENT PARSING
 # ==============================================================================
 
@@ -50,8 +59,9 @@ parser.add_argument("--before-end", type=float, help="End of 'before' window (ho
 parser.add_argument("--after-start", type=float, help="Start of 'after' window (hours after point)")
 parser.add_argument("--after-end", type=float, help="End of 'after' window (hours after point)")
 
+parser.add_argument("--product-type", type=str, default= "EW_GRD%", help="Filter by product type (e.g., 'EW_GRDM', 'IW_GRDH', 'EW_GRD%%' for wildcard)")
 parser.add_argument("--output-columns", nargs='*', default=[],
-                   help="Additional columns to include (id and geometry always included). Cyclone: cyclone_id, cyclone_lat, cyclone_lon, cyclone_datetime, cyclone_size")
+                   help=f"Additional columns to include ({', '.join(ALWAYS_INCLUDED.keys())} always included)")
 parser.add_argument("--threads", type=int, default=32, help="DuckDB threads (default: 32)")
 parser.add_argument("--memory-limit", type=str, default="16GB", help="DuckDB memory limit (default: 16GB)")
 parser.add_argument("--list-columns", action="store_true", help="List available columns and exit")
@@ -64,16 +74,11 @@ args = parser.parse_args()
 # ==============================================================================
 
 if args.list_columns:
-    print_section(f"COLUMNS IN TABLE: {args.table}")
     columns = get_table_columns(args.db, args.table)
-    
-    print("Satellite columns:")
+    print("\nSatellite columns:")
     for col in columns:
         print(f"  - {col}")
-    
-    print("\nCyclone columns:")
-    for col in ['cyclone_id', 'cyclone_lat', 'cyclone_lon', 'cyclone_datetime', 'cyclone_size']:
-        print(f"  - {col}")
+    print(f"\nAlways included: {', '.join(ALWAYS_INCLUDED.keys())}")
     sys.exit(0)
 
 # ==============================================================================
@@ -107,34 +112,28 @@ if args.after_start > args.after_end:
 
 satellite_columns = get_table_columns(args.db, args.table)
 
-if 'id' not in satellite_columns:
-    print(f"ERROR: Table '{args.table}' must have an 'id' column")
-    sys.exit(1)
+# Validate required columns exist
+for col in ['id', 'geometry', 'datetime_start']:
+    if col not in satellite_columns:
+        print(f"ERROR: Table '{args.table}' must have a '{col}' column")
+        sys.exit(1)
 
-if 'geometry' not in satellite_columns:
-    print(f"ERROR: Table '{args.table}' must have a 'geometry' column")
+# Check if product_type filter is requested
+if args.product_type and 'product_type' not in satellite_columns:
+    print(f"ERROR: Table '{args.table}' must have a 'product_type' column to use --product-type filter")
     sys.exit(1)
-
-cyclone_mapping = {
-    'cyclone_id': 'p.point_id as cyclone_id',
-    'cyclone_lat': 'p.latitude as cyclone_lat',
-    'cyclone_lon': 'p.longitude as cyclone_lon',
-    'cyclone_datetime': 'p.datetime_start as cyclone_datetime',
-    'cyclone_size': 'p.size as cyclone_size',
-}
 
 satellite_mapping = {col: f's.{col} as {col}' for col in satellite_columns}
-all_mappings = {**cyclone_mapping, **satellite_mapping}
 
-# Build SELECT clause - always include id and geometry
-select_columns = ['s.id as id', 's.geometry as geometry']
+# Build SELECT clause
+select_columns = list(ALWAYS_INCLUDED.values())
 invalid = []
 
 for col in args.output_columns:
-    if col in ['id', 'geometry']:
+    if col in ALWAYS_INCLUDED:
         continue
-    if col in all_mappings:
-        select_columns.append(all_mappings[col])
+    if col in satellite_mapping:
+        select_columns.append(satellite_mapping[col])
     else:
         invalid.append(col)
 
@@ -144,7 +143,11 @@ if invalid:
     sys.exit(1)
 
 select_clause = ',\n    '.join(select_columns)
-sort_column = 'cyclone_id' if 'cyclone_id' in args.output_columns else 's.id'
+
+# Build product type filter
+product_type_filter = ""
+if args.product_type:
+    product_type_filter = f"AND s.product_type LIKE '{args.product_type}'"
 
 # ==============================================================================
 # SQL SCRIPT
@@ -182,7 +185,8 @@ SELECT s.*
 FROM {args.table} s
 CROSS JOIN point_stats ps
 WHERE s.datetime_start >= ps.global_min_time
-  AND s.datetime_start <= ps.global_max_time;
+  AND s.datetime_start <= ps.global_max_time
+  {product_type_filter};
 
 CREATE OR REPLACE TABLE matches AS
 SELECT {select_clause}
@@ -191,7 +195,7 @@ INNER JOIN satellite_filtered s
 ON ST_DWithin(p.point_geom, s.geometry, p.buffer_degrees)
    AND ((s.datetime_start >= p.before_window_start AND s.datetime_start <= p.before_window_end)
      OR (s.datetime_start >= p.after_window_start AND s.datetime_start <= p.after_window_end))
-ORDER BY {sort_column};
+ORDER BY cyclone_id;
 
 CREATE OR REPLACE TEMP TABLE matches_with_point_id AS
 SELECT p.point_id, s.id as satellite_id
@@ -239,14 +243,14 @@ COPY (
 bigtext("Executing")
 
 if args.verbose:
-    print_section("SQL SCRIPT")
+    print("\n" + "="*80 + "\nSQL SCRIPT\n" + "="*80 + "\n")
     print(sql_script)
 
 result = subprocess.run(['duckdb', args.db], input=sql_script, text=True, capture_output=True)
 
 if result.returncode != 0:
     bigtext("FAILED")
-    print_section("ERROR OUTPUT")
+    print("\n" + "="*80 + "\nERROR OUTPUT\n" + "="*80 + "\n")
     print(result.stderr)
     sys.exit(1)
 
@@ -254,32 +258,24 @@ if result.returncode != 0:
 # OUTPUT
 # ==============================================================================
 
-try:
-    lines = [line for line in result.stdout.strip().split('\n') if line.strip()]
-    stats = json.loads(lines[-1] if lines else '{}')
-    
-    bigtext("SUCCESS")
-    
-    output_cols = ['id', 'geometry'] + [c for c in args.output_columns if c not in ['id', 'geometry']]
-    
-    print(f"\n  Database:      {args.db}")
-    print(f"  Table:         {args.table}")
-    print(f"  Threads:       {args.threads} | Memory: {args.memory_limit}")
-    print(f"  Time Window:   -{args.before_start}h to -{args.before_end}h | +{args.after_start}h to +{args.after_end}h")
-    print(f"  Output Cols:   {', '.join(output_cols)}")
-    
-    print(f"\n  Points:        {stats['num_points']} (size: {stats['min_size']:.1f}-{stats['max_size']:.1f} km)")
-    print(f"  Filtered Sat:  {stats.get('filtered_satellite_count', 'N/A')}")
-    print(f"  Matches:       {stats['total_matches']} ({stats['avg_matches_per_point']:.1f} avg, {stats['min_matches']}-{stats['max_matches']} range)")
-    print(f"  Coverage:      {stats['points_with_matches']}/{stats['num_points']} points")
-    
-    print(f"\n  ✓ Output: {args.output}\n")
-        
-except (json.JSONDecodeError, KeyError, IndexError) as e:
-    print(f"\n  WARNING: Could not parse statistics: {e}")
-    print(f"  Output written to: {args.output}\n")
-    if args.verbose:
-        print_section("RAW OUTPUT")
-        print(result.stdout)
+lines = [line for line in result.stdout.strip().split('\n') if line.strip()]
+stats = json.loads(lines[-1] if lines else '{}')
 
-sys.exit(0)
+bigtext("SUCCESS")
+
+output_cols = list(ALWAYS_INCLUDED.keys()) + [c for c in args.output_columns if c not in ALWAYS_INCLUDED]
+
+print(f"\n  Database:      {args.db}")
+print(f"  Table:         {args.table}")
+print(f"  Threads:       {args.threads} | Memory: {args.memory_limit}")
+print(f"  Time Window:   -{args.before_start}h to -{args.before_end}h | +{args.after_start}h to +{args.after_end}h")
+if args.product_type:
+    print(f"  Product Type:  {args.product_type}")
+print(f"  Output Cols:   {', '.join(output_cols)}")
+
+print(f"\n  Points:        {stats['num_points']} (size: {stats['min_size']:.1f}-{stats['max_size']:.1f} km)")
+print(f"  Filtered Sat:  {stats.get('filtered_satellite_count', 'N/A')}")
+print(f"  Matches:       {stats['total_matches']} ({stats['avg_matches_per_point']:.1f} avg, {stats['min_matches']}-{stats['max_matches']} range)")
+print(f"  Coverage:      {stats['points_with_matches']}/{stats['num_points']} points")
+
+print(f"\n  ✓ Output: {args.output}\n")
