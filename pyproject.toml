@@ -22,4 +22,5 @@ dependencies = [
     "boto3>=1.42.57",
     "s3cmd>=2.4.0",
     "polars>=1.38.1",
+    "sentinelhub>=3.11.4",
 ]

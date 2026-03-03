@@ -11,6 +11,22 @@ import os
 ENV_FILE = '.env'
 TOKEN_URL = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token'
 
+def save_token_data(token_data: dict, env_file: str):
+    """Save token data to .env file."""
+    now = datetime.now()
+    access_expires_at = now + timedelta(seconds=token_data['expires_in'])
+    refresh_expires_at = now + timedelta(seconds=token_data['refresh_expires_in'])
+    
+    Path(env_file).touch(exist_ok=True)
+    
+    set_key(env_file, 'ACCESS_TOKEN', token_data['access_token'])
+    set_key(env_file, 'ACCESS_TOKEN_EXPIRES_AT', access_expires_at.isoformat())
+    set_key(env_file, 'REFRESH_TOKEN', token_data['refresh_token'])
+    set_key(env_file, 'REFRESH_TOKEN_EXPIRES_AT', refresh_expires_at.isoformat())
+    set_key(env_file, 'TOKEN_TYPE', token_data.get('token_type', 'Bearer'))
+    
+    print(f"✓ Tokens saved to {env_file}")
+    print(f"✓ Access token expires at: {access_expires_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
 def refresh_access_token(env_file: str = ENV_FILE) -> Optional[str]:
 
@@ -73,24 +89,6 @@ def authenticate(username: str, password: str, env_file: str = ENV_FILE) -> str:
     
     print(f"✓ Authentication successful")
     return token_data['access_token']
-
-
-def save_token_data(token_data: dict, env_file: str):
-    """Save token data to .env file."""
-    now = datetime.now()
-    access_expires_at = now + timedelta(seconds=token_data['expires_in'])
-    refresh_expires_at = now + timedelta(seconds=token_data['refresh_expires_in'])
-    
-    Path(env_file).touch(exist_ok=True)
-    
-    set_key(env_file, 'ACCESS_TOKEN', token_data['access_token'])
-    set_key(env_file, 'ACCESS_TOKEN_EXPIRES_AT', access_expires_at.isoformat())
-    set_key(env_file, 'REFRESH_TOKEN', token_data['refresh_token'])
-    set_key(env_file, 'REFRESH_TOKEN_EXPIRES_AT', refresh_expires_at.isoformat())
-    set_key(env_file, 'TOKEN_TYPE', token_data.get('token_type', 'Bearer'))
-    
-    print(f"✓ Tokens saved to {env_file}")
-    print(f"✓ Access token expires at: {access_expires_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
 def main():
     parser = argparse.ArgumentParser("put in your username and password")
