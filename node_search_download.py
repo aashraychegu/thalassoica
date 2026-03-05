@@ -13,9 +13,9 @@ import copernicus_access_token
 from threading import Lock
 
 parser = argparse.ArgumentParser(
-    description="Download Sentinel-1 TIFF files from S3 based on CSV"
+    description="Download Sentinel-1 TIFF files from S3 based on a uuid parquet"
 )
-parser.add_argument("--csv", required=True, help="Path to CSV file with 'id' and 's3_path' columns")
+parser.add_argument("--uuids", required=True, help="Path to uuids file with 'id' and 's3_path' columns")
 parser.add_argument("--output", required=True, help="Output directory where folders with ID names will be created")
 parser.add_argument("--dotenv", default=".env", help="Path to .env file")
 parser.add_argument("--username", type=str)
@@ -24,7 +24,7 @@ parser.add_argument("--search-workers", type=int, default=32, help="Number of pa
 parser.add_argument("--download-workers", type=int, default=4, help="Number of parallel workers (default: 4)")
 
 args = parser.parse_args()
-df = pl.read_csv(args.csv)
+df = pl.read_parquet(args.uuids)
 
 copernicus_access_token.authenticate(args.username, args.password, args.dotenv)
 load_dotenv(args.dotenv)

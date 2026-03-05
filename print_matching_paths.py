@@ -47,5 +47,5 @@ for i, row in enumerate(good_matches.iter_rows(named=True)):
     print(f"\t{row['id_a']}:")
     print_paths(lookup[row["id_a"]])
     print(f"\t{row['id_b']}:")
-    print_paths(lookup[row["id_a"]])
+    print_paths(lookup[row["id_b"]])
     print()
