@@ -4,6 +4,7 @@ import subprocess
 import pyfiglet
 import sys
 import json
+import time
 
 def bigtext(string):
     """Prints a large ASCII art banner."""
@@ -50,7 +51,7 @@ def main():
     # ARGUMENT PARSING
     # ==========================================================================
     parser = argparse.ArgumentParser(
-        description="Find satellite imagery near points. This script reads a points Parquet file, enriches it, and saves it as a persistent 'input_points' table in the database. It then finds and outputs matching satellite scenes to a Parquet file.",
+        description="Find satellite imagery near points. This script reads a points Parquet file, and saves it as a persistent 'input_points' table in the database. It then finds and outputs matching satellite scenes to a Parquet file.",
         formatter_class=argparse.RawTextHelpFormatter
     )
 
@@ -127,7 +128,7 @@ def main():
     SET threads TO {args.threads};
     SET memory_limit = '{args.memory_limit}';
 
-    -- Step 1: Read input points, rename columns, enrich, and save as a persistent table.
+    -- Step 1: Read input points, rename columns, and save as a persistent table.
     CREATE OR REPLACE TABLE input_points AS
     SELECT
         -- Carry over all original columns from the Parquet file
@@ -204,31 +205,29 @@ def main():
     if args.verbose:
         print("\n" + "="*80 + "\nSQL SCRIPT\n" + "="*80 + "\n" + sql_script)
 
+    starttime = time.time()
     try:
         result = subprocess.run(['duckdb', args.db], input=sql_script, text=True, capture_output=True, check=True)
     except subprocess.CalledProcessError as e:
         bigtext("FAILED")
         print("\n" + "="*80 + "\nERROR OUTPUT\n" + "="*80 + "\n" + e.stderr)
         sys.exit(1)
-
+    endtime = time.time() - starttime
     lines = [line for line in result.stdout.strip().split('\n') if line.strip()]
     stats = json.loads(lines[-1] if lines else '{}')
 
     bigtext("SUCCESS")
 
-    print(f"\n  Database:        {args.db}")
-    print(f"  Satellite Table: {args.table}")
-    print(f"  Points File:     {args.points}")
-    print(f"  Time Window:     [-{args.before_start}h to -{args.before_end}h] and [+{args.after_start}h to +{args.after_end}h]")
-    
-    print("\n--- RESULTS ---")
-    print(f"  ✓ Enriched points saved to 'input_points' table in the database.")
-    print(f"  Input Points:    {stats.get('num_points', 0)} (size: {stats.get('min_size', 0):.1f}-{stats.get('max_size', 0):.1f} km)")
-    print(f"  Filtered Scenes: {stats.get('filtered_satellite_count', 'N/A')}")
-    print(f"  Total Matches:   {stats.get('total_matches', 0)} ({stats.get('avg_matches_per_point', 0):.1f} avg, range {stats.get('min_matches', 0)}-{stats.get('max_matches', 0)})")
-    print(f"  Point Coverage:  {stats.get('points_with_matches', 0)} of {stats.get('num_points', 0)} points have at least one match.")
-
-    print(f"\n  ✓ Match data exported to: {args.output}\n")
+    print(f"\n\tDatabase:        {args.db}")
+    print(f"\tSatellite Table: {args.table}")
+    print(f"\tPoints File:     {args.points}")
+    print(f"\tTime Window:     [-{args.before_start}h to -{args.before_end}h] and [+{args.after_start}h to +{args.after_end}h]")
+    print(f"\tPoints saved to 'input_points' table in the database in {endtime} ms")
+    print(f"\tInput Points:    {stats.get('num_points', 0)} (size: {stats.get('min_size', 0):.1f}-{stats.get('max_size', 0):.1f} km)")
+    print(f"\tFiltered Scenes: {stats.get('filtered_satellite_count', 'N/A')}")
+    print(f"\tTotal Matches:   {stats.get('total_matches', 0)} ({stats.get('avg_matches_per_point', 0):.1f} avg, range {stats.get('min_matches', 0)}-{stats.get('max_matches', 0)})")
+    print(f"\tPoint Coverage:  {stats.get('points_with_matches', 0)} of {stats.get('num_points', 0)} points have at least one match.")
+    print(f"\tMatch data exported to: {args.output}\n")
 
 if __name__ == "__main__":
     main()

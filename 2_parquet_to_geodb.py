@@ -10,9 +10,9 @@ def bigtext(string):
 parser = argparse.ArgumentParser(
     description="Convert a Parquet file to a geospatial DuckDB table via the CLI."
 )
-parser.add_argument("--input_parquet", required=True, help="Path to the input Parquet file.")
-parser.add_argument("--table_name", required=True, help="Name for the new table in the database.")
-parser.add_argument("--output_db", required=True, help="Path for the output DuckDB database file.")
+parser.add_argument("--input-parquet", required=True, help="Path to the input Parquet file.")
+parser.add_argument("--table-name", required=True, help="Name for the new table in the database.")
+parser.add_argument("--output-db", required=True, help="Path for the output DuckDB database file.")
 
 # 2. Parse the command-line arguments
 args = parser.parse_args()
@@ -22,9 +22,6 @@ sql_script = f"""
 INSTALL spatial;
 LOAD spatial;
 
-SHOW ALL TABLES;
-
-SELECT 'Starting Table Creation' as output;
 
 CREATE OR REPLACE TABLE {args.table_name} AS
 SELECT
@@ -32,11 +29,7 @@ SELECT
 FROM
     read_parquet('{args.input_parquet}');
 
-SELECT 'Finished Table Creation' as output;
-
-DESCRIBE {args.table_name};
 SUMMARIZE {args.table_name};
-SHOW ALL TABLES;
 """
 
 result = subprocess.run(
@@ -46,12 +39,12 @@ result = subprocess.run(
         capture_output=True         # Suppress output unless an error occurs
 )
 
-bigtext(f"Output: {result.returncode}")
+# bigtext(f"Output: {result.returncode}")
 
-bigtext(f"stdout")
+# bigtext(f"stdout")
 print(result.stdout)
 
-bigtext(f"stderr")
-print(result.stderr)
+# bigtext(f"stderr")
+# print(result.stderr)
 
-print(result)
+# print(result)

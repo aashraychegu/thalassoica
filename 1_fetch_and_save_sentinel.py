@@ -313,7 +313,7 @@ if __name__ == "__main__":
             # imap_unordered is faster than map
             results = pool.imap_unordered(fetch_and_process_chunk, tasks, chunksize=1)
             
-            for table in tqdm(results, total=len(tasks), desc="Processing", unit="chunk"):
+            for table in tqdm(results, total=len(tasks), desc="Processing:", unit=f"{DAYS_PER_CHUNK} day chunks"):
                 if table is not None:
                     writer.write_table(table)
                     total_items += len(table)

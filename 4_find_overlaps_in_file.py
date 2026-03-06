@@ -38,6 +38,7 @@ def check_intersections(matches_file, output_file):
           AND b.datetime_start > a.point_datetime
           AND a.datetime_start < b.datetime_start
     ) TO '{output_file}' (FORMAT PARQUET);
+    summarize select * from '{output_file}';
     """
     
     result = subprocess.run(
@@ -51,7 +52,7 @@ def check_intersections(matches_file, output_file):
         print(f"Error writing to parquet: {result.stderr}")
         return
     
-    print(f"✓ Results saved to {output_file}")
+    print(result.stdout)
 
 def main():
     parser = argparse.ArgumentParser(

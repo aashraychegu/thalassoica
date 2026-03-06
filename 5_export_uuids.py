@@ -86,6 +86,8 @@ LEFT JOIN db.sentinel1 s1 ON c.id = s1.id;
 COPY (
     SELECT * FROM processed_data ORDER BY start_datetime, id
 ) TO '{args.uuids}' (FORMAT 'parquet');
+
+SUMMARIZE SELECT * FROM '{args.uuids}';
 """
 
 # --- Execution ---
@@ -102,10 +104,6 @@ result = subprocess.run(
     text=True,
     capture_output=True,
 )
-
-print(result.stderr)
-
-print(result.stdout)
 
 print(f"Processed data saved to Parquet file: {args.uuids}")
 
