@@ -8,6 +8,7 @@ def bigtext(s: str) -> None:
 
 
 ALWAYS_INCLUDED = {
+    "source_table": "CAST(? AS VARCHAR) as source_table",
     "id": "s.id as id",
     "geometry": "s.geometry as geometry",
     "datetime_start": "s.datetime_start as datetime_start",
@@ -20,6 +21,24 @@ def get_table_columns(con: duckdb.DuckDBPyConnection, table: str) -> set[str]:
     return set(con.execute(f"SELECT * FROM {table} LIMIT 0").df().columns)
 
 
+def validate_args(args, parser, con: duckdb.DuckDBPyConnection) -> set[str]:
+    # Time-window sanity checks
+    if args.before_start < args.before_end:
+        parser.error("--before-start must be >= --before-end.")
+    if args.after_start > args.after_end:
+        parser.error("--after-start must be <= --after-end.")
+
+    # Satellite table required columns
+    sat_cols = get_table_columns(con, args.table)
+    missing = {"id", "geometry", "datetime_start", "product_type"} - sat_cols
+    if missing:
+        parser.error(
+            f"Satellite table '{args.table}' is missing required columns: {', '.join(sorted(missing))}"
+        )
+
+    return sat_cols
+
+
 def main(args, parser):
     import time
 
@@ -29,26 +48,7 @@ def main(args, parser):
     con.execute(f"SET threads TO {args.threads}")
     con.execute(f"SET memory_limit = '{args.memory_limit}'")
 
-    if args.list_columns:
-        cols = sorted(get_table_columns(con, args.table))
-        print(f"\nAvailable columns in satellite table '{args.table}':")
-        for c in cols:
-            print(f"  - {c}")
-        print(f"\nAlways included columns in output: {', '.join(ALWAYS_INCLUDED.keys())}")
-        return
-
-    need = ["points", "before_start", "before_end", "after_start", "after_end"]
-    if any(getattr(args, k) is None for k in need):
-        parser.error("When not using --list-columns, --points and all time-window args are required.")
-    if args.before_start < args.before_end:
-        parser.error("--before-start must be >= --before-end.")
-    if args.after_start > args.after_end:
-        parser.error("--after-start must be <= --after-end.")
-
-    sat_cols = get_table_columns(con, args.table)
-    missing = {"id", "geometry", "datetime_start", "product_type"} - sat_cols
-    if missing:
-        parser.error(f"Satellite table '{args.table}' is missing required columns: {', '.join(sorted(missing))}")
+    sat_cols = validate_args(args, parser, con)
 
     select_cols = list(ALWAYS_INCLUDED.values())
     for c in args.output_columns:
@@ -60,7 +60,6 @@ def main(args, parser):
             print(f"WARNING: requested column '{c}' not found in satellite table; ignoring.")
     select_clause = ",\n    ".join(select_cols)
 
-    # Name output table based on the *input points* table name (which is 'input_points')
     matches_table = f"{args.table}_matches"
 
     sql = f"""
@@ -103,13 +102,11 @@ def main(args, parser):
     ORDER BY p.point_id, s.datetime_start;
     """
 
-    if args.verbose:
-        print("\n" + "=" * 80 + "\nSQL\n" + "=" * 80 + "\n" + sql)
-
     bigtext("Executing")
     t0 = time.time()
 
-    con.execute(sql)
+    # Bind the table name into the SELECT as source_table
+    con.execute(sql, [args.table])
 
     stats = con.execute(
         f"""
@@ -189,13 +186,13 @@ if __name__ == "__main__":
     io = parser.add_argument_group("Input/Output Arguments")
     io.add_argument("--db", required=True, help="Path to DuckDB database file.")
     io.add_argument("--table", required=True, help="Source satellite table name.")
-    io.add_argument("--points", help="Input Parquet file with cyclone points.")
+    io.add_argument("--points", required=True, help="Input Parquet file with cyclone points.")
 
     tw = parser.add_argument_group("Time Window Arguments (hours relative to point datetime)")
-    tw.add_argument("--before-start", type=float)
-    tw.add_argument("--before-end", type=float)
-    tw.add_argument("--after-start", type=float)
-    tw.add_argument("--after-end", type=float)
+    tw.add_argument("--before-start", type=float, required=True)
+    tw.add_argument("--before-end", type=float, required=True)
+    tw.add_argument("--after-start", type=float, required=True)
+    tw.add_argument("--after-end", type=float, required=True)
 
     flt = parser.add_argument_group("Filtering and Output Columns")
     flt.add_argument("--product-type", default="EW_GRD%", help="SQL LIKE pattern (default: EW_GRD%).")
@@ -204,10 +201,6 @@ if __name__ == "__main__":
     perf = parser.add_argument_group("Performance")
     perf.add_argument("--threads", type=int, default=32)
     perf.add_argument("--memory-limit", default="16GB")
-
-    meta = parser.add_argument_group("Metadata and Debugging")
-    meta.add_argument("--list-columns", action="store_true")
-    meta.add_argument("--verbose", action="store_true")
 
     args = parser.parse_args()
     main(args, parser)
