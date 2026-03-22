@@ -17,31 +17,31 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("--uuids", required=True, help="Path to uuids file with 'id' and 's3_path' columns")
 parser.add_argument("--output", required=True, help="Output directory where folders with ID names will be created")
-parser.add_argument("--dotenv", default=".env", help="Path to .env file")
-parser.add_argument("--username", type=str)
-parser.add_argument('--password', type=str)
+parser.add_argument("--token-dotenv", default="copernicus_tokens.env", help="Path to .env file")
+parser.add_argument("--login-dotenv",default="copernicus_login.env",)
 parser.add_argument("--search-workers", type=int, default=32, help="Number of parallel workers for searching (default: 32)")
 parser.add_argument("--download-workers", type=int, default=4, help="Number of parallel workers (default: 4)")
 
 args = parser.parse_args()
 df = pl.read_parquet(args.uuids)
 
-copernicus_access_token.authenticate(args.username, args.password, args.dotenv)
-load_dotenv(args.dotenv)
+load_dotenv(args.login_dotenv)
+copernicus_access_token.authenticate(os.getenv("USERNAME"),os.getenv("PASSWORD"), args.token_dotenv)
+load_dotenv(args.token_dotenv)
 
 token_lock = Lock()
 
 def get_current_token():
     """Thread-safe token retrieval"""
     with token_lock:
-        load_dotenv(args.dotenv, override=True)
+        load_dotenv(args.token_dotenv, override=True)
         return os.getenv("ACCESS_TOKEN")
 
 def refresh_token_safe():
     """Thread-safe token refresh - only one thread refreshes at a time"""
     with token_lock:
-        copernicus_access_token.refresh_access_token(args.dotenv)
-        load_dotenv(args.dotenv, override=True)
+        copernicus_access_token.refresh_access_token(args.token_dotenv)
+        load_dotenv(args.token_dotenv, override=True)
         return os.getenv("ACCESS_TOKEN")
 
 def process_pair(pair):

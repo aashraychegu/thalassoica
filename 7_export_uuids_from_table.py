@@ -18,19 +18,21 @@ def main() -> None:
         help='Name of the overlaps table to process.',
     )
     parser.add_argument(
-        '--output-table',
-        default=None,
-        help='Output table name (default: {overlaps_table}_uuids).',
+        '--output',
+        required=True,
+        help='Output file path.',
+    )
+    parser.add_argument(
+        '--csv',
+        action='store_true',
+        help='Export as CSV instead of Parquet (default).',
     )
     parser.add_argument('--threads', type=int, default=32)
     parser.add_argument('--memory-limit', default='16GB')
     parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
 
-    out_table = args.output_table or f"{args.overlaps_table}_uuids"
-
     con = duckdb.connect(args.db)
-    con.execute("INSTALL spatial; LOAD spatial;")
     con.execute(f"SET threads TO {args.threads}")
     con.execute(f"SET memory_limit = '{args.memory_limit}'")
 
@@ -45,14 +47,12 @@ def main() -> None:
     source_table = source_table_result[0]
 
     sql = f"""
-    CREATE OR REPLACE TABLE {out_table} AS
     WITH 
         -- Step 1: Unpivot the 'before' and 'after' columns into a consistent stream of records.
         unpivoted_data AS (
             SELECT 
                 id_before AS id,
-                datetime_start_before AS start_datetime,
-                geometry_before AS geometry
+                datetime_start_before AS start_datetime
             FROM {args.overlaps_table}
             WHERE id_before IS NOT NULL
 
@@ -60,31 +60,19 @@ def main() -> None:
 
             SELECT 
                 id_after AS id,
-                datetime_start_after AS start_datetime,
-                geometry_after AS geometry
+                datetime_start_after AS start_datetime
             FROM {args.overlaps_table}
             WHERE id_after IS NOT NULL
-        ),
-
-        -- Step 2: Calculate the centroid geometry for each record.
-        with_centroids AS (
-            SELECT
-                *,
-                ST_Centroid(geometry) AS centroid_geom
-            FROM unpivoted_data
         )
 
-    -- Step 3: Select the final columns, join with the source table, and format geometry outputs.
+    -- Step 2: Join with the source table to get s3_path.
     SELECT 
-        c.id,
-        c.start_datetime,
-        s.s3_path,
-        ST_AsText(c.centroid_geom) AS centroid_wkt,
-        ST_Y(c.centroid_geom) AS lat, -- Latitude (Y coordinate)
-        ST_X(c.centroid_geom) AS lon  -- Longitude (X coordinate)
-    FROM with_centroids c
-    LEFT JOIN {source_table} s ON c.id = s.id
-    ORDER BY start_datetime, c.id;
+        u.id,
+        u.start_datetime,
+        s.s3_path
+    FROM unpivoted_data u
+    LEFT JOIN {source_table} s ON u.id = s.id
+    ORDER BY start_datetime, u.id
     """
 
     if args.verbose:
@@ -92,18 +80,20 @@ def main() -> None:
         print(sql)
 
     print(f"Loading overlaps table: {args.overlaps_table}")
-    print(f"Processing records and creating output table...")
+    print(f"Processing records and exporting to {args.output}...")
 
-    con.execute(sql)
+    # Export based on format flag
+    if args.csv:
+        con.execute(f"COPY ({sql}) TO '{args.output}' (FORMAT CSV, HEADER)")
+        format_type = "CSV"
+    else:
+        con.execute(f"COPY ({sql}) TO '{args.output}' (FORMAT PARQUET)")
+        format_type = "Parquet"
 
-    summary = con.execute(f"SUMMARIZE SELECT * FROM {out_table}").fetchdf()
-    mid = (len(summary.columns) + 1) // 2
-    left = summary.iloc[:, :mid]
-    right = summary.iloc[:, mid:]
-
-    print(f"\nCreated table: {out_table}")
-    print(left)
-    print(right)
+    # Get row count for summary
+    row_count = con.execute(f"SELECT COUNT(*) FROM ({sql})").fetchone()[0]
+    
+    print(f"\nExported {row_count} records to: {args.output} ({format_type})")
 
 
 if __name__ == "__main__":

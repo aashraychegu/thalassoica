@@ -4,3 +4,5 @@ intermediates/*
 .s3cfg
 *.nc
 cdsapikey
+.env*
+*.env
