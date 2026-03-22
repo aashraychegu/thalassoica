@@ -1,0 +1,9 @@
+mkdir intermediates
+cd intermediates
+mkdir cyclone_coordinates
+mkdir db
+mkdir seaice_concentrations
+mkdir shapes
+mkdir shapes/sentinel1
+mkdir tiffs
+mkdir uuids
