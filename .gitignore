@@ -6,3 +6,4 @@ intermediates/*
 cdsapikey
 .env*
 *.env
+log*.txt

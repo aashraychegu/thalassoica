@@ -8,3 +8,5 @@ mkdir shapes/sentinel1
 mkdir tiffs
 mkdir uuids
 mkdir era5_mslp
+mkdir tempestextreme_files
+mkdir tempestextreme_files/logs
