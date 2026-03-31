@@ -55,12 +55,12 @@ else:
 
 add_cmd_subpart(command, "--in_data_list", str(detectnodes_in))
 add_cmd_subpart(command, "--out_file_list", str(detectnodes_out))
-add_cmd_subpart(command, "--searchbymin", "msl")  # Changed from mslp_snapshot to msl
-add_cmd_subpart(command, "--closedcontourcmd", "msl,200.0,4.0,0")  # Changed variable name
+add_cmd_subpart(command, "--searchbymin", "msl")  
+add_cmd_subpart(command, "--closedcontourcmd", "msl,200.0,4.0,0")
 add_cmd_subpart(command, "--mergedist", "6.0")
-add_cmd_subpart(command, "--outputcmd", "msl,min,0;msl,maxdist,4")  # Changed variable name
-add_cmd_subpart(command, "--latname", "latitude")  # Changed from lat to latitude
-add_cmd_subpart(command, "--lonname", "longitude")  # Changed from lon to longitude
+add_cmd_subpart(command, "--outputcmd", "msl,min,0;msl,maxdist,4")
+add_cmd_subpart(command, "--latname", "latitude")  
+add_cmd_subpart(command, "--lonname", "longitude")  
 add_cmd_subpart(command, "--timefilter", "6hr")
 add_cmd_subpart(command, "--logdir", str(logdir))
 add_cmd_subpart(command, "--verbosity", args.verbosity)
