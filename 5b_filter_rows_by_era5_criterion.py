@@ -163,11 +163,11 @@ def main() -> None:
 
     p.add_argument("--key-dotenv", required=True)
     p.add_argument("--era5-table", default="reanalysis-era5-single-levels")
-    p.add_argument("--era5-variable", required=True)
+    p.add_argument("--era5-variable", default = "sea_ice_cover")
     p.add_argument("--netcdf-var", default=None)
 
-    p.add_argument("--op", required=True, choices=["lt", "le", "gt", "ge", "eq", "ne"])
-    p.add_argument("--threshold", required=True, type=float)
+    p.add_argument("--op", default = "ge", choices=["lt", "le", "gt", "ge", "eq", "ne"])
+    p.add_argument("--threshold", default=.15, type=float)
 
     p.add_argument("--era5-dir", default="intermediates/era5")
     p.add_argument("--area", default="-60,-180,-80,180", help="N,W,S,E")
@@ -177,6 +177,7 @@ def main() -> None:
     p.add_argument(
         "--load-netcdf",
         action="store_true",
+        default = True,
         help="Load each year's NetCDF fully into memory when processing that year.",
     )
 
@@ -185,7 +186,7 @@ def main() -> None:
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
 
-    out_table = args.output_table or f"{args.input_table}_era5_filtered"
+    out_table = args.output_table or f"{args.input_table}__era5_filtered"
 
     con = duckdb.connect(args.db)
     con.execute("INSTALL spatial; LOAD spatial;")

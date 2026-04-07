@@ -35,7 +35,7 @@ con.execute(f"SET threads TO {args.threads}")
 con.execute(f"SET memory_limit = '{args.memory_limit}'")
 
 if args.out_table is None:
-    args.out_table = args.in_table + "_filtered_overlap"
+    args.out_table = args.in_table + "__overlap_filtered"
 
 sql = f"""
 CREATE OR REPLACE TABLE {args.out_table} AS

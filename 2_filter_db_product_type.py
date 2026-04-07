@@ -26,7 +26,7 @@ def main(args, parser):
 
     validate_args(args, parser, con)
 
-    out_table = args.out_table or f"{args.table}_product_filtered"
+    out_table = args.out_table or f"{args.table}__product_filtered"
 
     sql = f"""
     CREATE OR REPLACE TABLE {out_table} AS

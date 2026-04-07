@@ -18,6 +18,11 @@ def main() -> None:
         help='Name of the overlaps table to process.',
     )
     parser.add_argument(
+        '--multi-sat-overlaps',
+        default=None,
+        help='Name of the multi-satellite overlaps table (from first script) to filter by row IDs.',
+    )
+    parser.add_argument(
         '--output',
         required=True,
         help='Output file path.',
@@ -68,14 +73,46 @@ def main() -> None:
     # Build the SELECT clause for output columns
     output_column_select = ',\n        '.join([f's.{col}' for col in args.output_columns])
 
+    # Determine the row_id column name for this overlaps table in the multi-sat table
+    row_id_col = f"{args.overlaps_table}_row_id"
+
+    # Build the WHERE clause for multi-sat filtering if specified
+    multi_sat_filter = ""
+    if args.multi_sat_overlaps:
+        # Verify the column exists in the multi-sat table
+        columns_result = con.execute(
+            f"SELECT column_name FROM information_schema.columns WHERE table_name = '{args.multi_sat_overlaps}'"
+        ).fetchall()
+        column_names = [col[0] for col in columns_result]
+        
+        if row_id_col not in column_names:
+            raise ValueError(
+                f"Column '{row_id_col}' not found in multi-sat table '{args.multi_sat_overlaps}'. "
+                f"Available columns: {', '.join(column_names)}"
+            )
+        
+        multi_sat_filter = f"""
+        WHERE rowid IN (
+            SELECT {row_id_col} 
+            FROM {args.multi_sat_overlaps}
+            WHERE {row_id_col} IS NOT NULL
+        )
+        """
+
     sql = f"""
     WITH 
+        -- Step 0: Filter overlaps table by multi-sat row IDs if specified
+        filtered_overlaps AS (
+            SELECT *
+            FROM {args.overlaps_table}
+            {multi_sat_filter}
+        ),
         -- Step 1: Unpivot the 'before' and 'after' columns into a consistent stream of records.
         unpivoted_data AS (
             SELECT 
                 id_before AS id,
                 datetime_start_before AS start_datetime
-            FROM {args.overlaps_table}
+            FROM filtered_overlaps
             WHERE id_before IS NOT NULL
 
             UNION ALL
@@ -83,7 +120,7 @@ def main() -> None:
             SELECT 
                 id_after AS id,
                 datetime_start_after AS start_datetime
-            FROM {args.overlaps_table}
+            FROM filtered_overlaps
             WHERE id_after IS NOT NULL
         )
 
@@ -100,9 +137,14 @@ def main() -> None:
     if args.verbose:
         print(f"Source table: {source_table}")
         print(f"Output columns: {', '.join(args.output_columns)}")
+        if args.multi_sat_overlaps:
+            print(f"Multi-sat overlaps table: {args.multi_sat_overlaps}")
+            print(f"Filtering by row_id column: {row_id_col}")
         print(sql)
 
     print(f"Loading overlaps table: {args.overlaps_table}")
+    if args.multi_sat_overlaps:
+        print(f"Filtering by multi-sat overlaps: {args.multi_sat_overlaps}")
     print(f"Output columns: {', '.join(args.output_columns)}")
     print(f"Processing records and exporting to {args.output}...")
 
