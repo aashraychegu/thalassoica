@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 
 def pick_xarray_engine() -> str | None:
+    """Detect best xarray engine for NetCDF files."""
     try:
         import netCDF4  # noqa: F401
         return "netcdf4"
@@ -88,7 +89,7 @@ def make_comparator(op: str, threshold: float) -> Callable[[np.ndarray], np.ndar
     return lambda v: v != threshold  # ne
 
 
-def filter_overlaps_batched(
+def filter_overlaps_batched_sel(
     overlaps: pl.DataFrame,
     year_to_path: dict[int, Path],
     *,
@@ -98,11 +99,9 @@ def filter_overlaps_batched(
     batch_size: int,
     load_netcdf: bool,
     verbose: bool,
+    engine: str | None,
 ) -> pl.DataFrame:
-    engine = pick_xarray_engine()
-    if verbose:
-        print(f"xarray engine: {engine or 'auto/default'}")
-
+    """Original lookup method using xarray .sel() with coordinate-based indexing."""
     cmpv = make_comparator(op, threshold)
     parts: list[pl.DataFrame] = []
 
@@ -155,6 +154,101 @@ def filter_overlaps_batched(
     return pl.concat(parts) if parts else overlaps.head(0)
 
 
+def filter_overlaps_batched_vectorized(
+    overlaps: pl.DataFrame,
+    year_to_path: dict[int, Path],
+    *,
+    netcdf_var: str | None,
+    op: str,
+    threshold: float,
+    batch_size: int,
+    verbose: bool,
+) -> pl.DataFrame:
+    """Faster lookup method using numpy vectorized indexing."""
+    cmpv = make_comparator(op, threshold)
+    parts: list[pl.DataFrame] = []
+
+    groups = list(overlaps.group_by(pl.col("point_datetime").dt.year()))
+    for (year,), dfy in tqdm(groups, desc="Years (filtering)", unit="year"):
+        year = int(year)
+        nc_path = year_to_path[year]
+
+        var_name = netcdf_var or xr.open_dataset(nc_path).data_vars[0]
+        da = xr.open_dataarray(nc_path, var_name)
+        da.load()
+
+        var_values = da.values  # Shape: (time, lat, lon)
+        time_coords = da.coords['valid_time'].values
+        lat_coords = da.coords['latitude'].values
+        lon_coords = da.coords['longitude'].values
+
+        times = dfy["point_datetime"].to_numpy()
+        lats = dfy["overlap_lat"].to_numpy().astype(np.float64)
+        lons = dfy["overlap_lon"].to_numpy().astype(np.float64)
+
+        keep = np.zeros(dfy.height, dtype=bool)
+
+        for start in tqdm(
+            range(0, dfy.height, batch_size),
+            desc=f"{year} batches",
+            unit="batch",
+            leave=False,
+        ):
+            end = min(start + batch_size, dfy.height)
+
+            # Vectorized nearest-neighbor lookup without creating DataArrays
+            batch_times = times[start:end]
+            batch_lats = lats[start:end]
+            batch_lons = lons[start:end]
+
+            # Find nearest indices for each coordinate
+            time_indices = np.searchsorted(time_coords, batch_times)
+            time_indices = np.clip(time_indices, 0, len(time_coords) - 1)
+
+            lat_indices = np.argmin(np.abs(lat_coords[:, None] - batch_lats), axis=0)
+            lon_indices = np.argmin(np.abs(lon_coords[:, None] - batch_lons), axis=0)
+
+            vals = var_values[time_indices, lat_indices, lon_indices]
+            vals = vals.astype(np.float64)
+
+            ok = ~np.isnan(vals)
+            keep[start:end] = ok & cmpv(vals)
+
+        tqdm.write(f"Year {year}: kept {int(keep.sum())}/{dfy.height}")
+        parts.append(dfy.filter(pl.Series(keep)))
+
+    return pl.concat(parts) if parts else overlaps.head(0)
+
+
+def filter_overlaps_batched(
+    overlaps: pl.DataFrame,
+    year_to_path: dict[int, Path],
+    *,
+    netcdf_var: str | None,
+    op: str,
+    threshold: float,
+    batch_size: int,
+    load_netcdf: bool,
+    lookup_method: str,
+    verbose: bool,
+) -> pl.DataFrame:
+    """Dispatch to the appropriate lookup method."""
+    engine = pick_xarray_engine()
+    if verbose:
+        print(f"xarray engine: {engine or 'auto/default'}")
+
+    if lookup_method == "sel":
+        return filter_overlaps_batched_sel(
+            overlaps, year_to_path, netcdf_var=netcdf_var, op=op, threshold=threshold,
+            batch_size=batch_size, load_netcdf=load_netcdf, verbose=verbose, engine=engine,
+        )
+    else:  # vectorized
+        return filter_overlaps_batched_vectorized(
+            overlaps, year_to_path, netcdf_var=netcdf_var, op=op, threshold=threshold,
+            batch_size=batch_size, verbose=verbose,
+        )
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Filter rows by ERA5 value at overlap centroid (nearest, batched).")
     p.add_argument("--db", required=True)
@@ -173,6 +267,13 @@ def main() -> None:
     p.add_argument("--area", default="-60,-180,-80,180", help="N,W,S,E")
     p.add_argument("--times", default="00:00,12:00")
     p.add_argument("--batch-size", type=int, default=25_000)
+
+    p.add_argument(
+        "--lookup-method",
+        choices=["vectorized", "sel"],
+        default="vectorized",
+        help="Lookup method for NetCDF coordinates: 'vectorized' (faster, uses argmin) or 'sel' (original xarray-based method)",
+    )
 
     p.add_argument(
         "--load-netcdf",
@@ -234,6 +335,7 @@ def main() -> None:
         threshold=args.threshold,
         batch_size=args.batch_size,
         load_netcdf=args.load_netcdf,
+        lookup_method=args.lookup_method,
         verbose=args.verbose,
     )
 

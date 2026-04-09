@@ -91,14 +91,14 @@ def authenticate(username: str, password: str, env_file: str = ENV_FILE) -> str:
     return token_data['access_token']
 
 def main():
-    parser = argparse.ArgumentParser("put in your username and password")
-    parser.add_argument("--uname",type=str)
-    parser.add_argument('--pword',type=str)
+    parser = argparse.ArgumentParser(description="Authenticate with Copernicus Data Space to get OAuth tokens")
+    parser.add_argument("--uname", type=str, help="Copernicus username")
+    parser.add_argument("--pword", type=str, help="Copernicus password")
     args = parser.parse_args()
-    
-    username = input("Enter your username: ").strip() if args.uname is None else args.uname
-    password = getpass.getpass("Enter your password: ") if args.pword is None else args.pword
-    
+
+    username = args.uname if args.uname else input("Enter your username: ").strip()
+    password = getpass.getpass("Enter your password: ") if not args.pword else args.pword
+
     authenticate(username, password)
 
 if __name__ == "__main__":

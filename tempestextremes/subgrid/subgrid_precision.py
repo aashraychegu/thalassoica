@@ -64,14 +64,51 @@ def worker_one_time(store_path, store_kind, t, idxs, clats, clons, dlat, dlon, m
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tracks", default="intermediates/te_out/tracks_mslp.parquet")
-    parser.add_argument("--mslp", default="intermediates/era5_mslp/*.nc")
-    parser.add_argument("--out", default="intermediates/te_out/tracks_mslp_refined.parquet")
-    parser.add_argument("--method", choices=["linear", "cubic"], default="cubic")
-    parser.add_argument("--radius", type=float, default=0.125)
-    parser.add_argument("--nr", type=int, default=10)
-    parser.add_argument("--ntheta", type=int, default=64)
-    parser.add_argument("--workers", type=int, default=24)
+    parser.add_argument(
+        "--input-file",
+        default="intermediates/te_out/tracks_mslp.parquet",
+        help="Input tracks Parquet file"
+    )
+    parser.add_argument(
+        "--input-dir",
+        default="intermediates/era5_mslp/*.nc",
+        help="Input directory containing NetCDF MSLP files"
+    )
+    parser.add_argument(
+        "--output",
+        default="intermediates/te_out/tracks_mslp_refined.parquet",
+        help="Output refined tracks Parquet file"
+    )
+    parser.add_argument(
+        "--method",
+        choices=["linear", "cubic"],
+        default="cubic",
+        help="Interpolation method for finding MSLP (default: cubic)"
+    )
+    parser.add_argument(
+        "--radius",
+        type=float,
+        default=0.125,
+        help="Search radius in degrees for MSLP interpolation (default: 0.125)"
+    )
+    parser.add_argument(
+        "--nr",
+        type=int,
+        default=10,
+        help="Number of radial points (default: 10)"
+    )
+    parser.add_argument(
+        "--ntheta",
+        type=int,
+        default=64,
+        help="Number of theta points (default: 64)"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=24,
+        help="Number of parallel workers (default: 24)"
+    )
     parser.add_argument(
         "--zarr_intermediate",
         default="intermediates/era5_mslp/mslp.zarr",
@@ -86,7 +123,7 @@ def main():
 
     args = parser.parse_args()
 
-    tracks = pl.read_parquet(args.tracks)
+    tracks = pl.read_parquet(args.input_file)
 
     # candidate offsets
     radius = np.linspace(0, args.radius, args.nr)
@@ -113,11 +150,11 @@ def main():
 
     # choose data source: zarr if provided, else netcdf glob
     if args.zarr_intermediate:
-        store_path = ensure_zarr_intermediate(args.mslp, args.zarr_intermediate, time_chunk=args.zarr_time_chunk)
+        store_path = ensure_zarr_intermediate(args.input_dir, args.zarr_intermediate, time_chunk=args.zarr_time_chunk)
         store_kind = "zarr"
         print(f"Using zarr store: {store_path}")
     else:
-        store_path = args.mslp
+        store_path = args.input_dir
         store_kind = "netcdf"
         print(f"Using NetCDF glob: {store_path}")
 
@@ -149,8 +186,8 @@ def main():
         pl.Series("latc", refined_lats),
         pl.Series("lonc", refined_lons),
     ])
-    out.write_parquet(args.out)
-    print(f"Wrote refined tracks to {args.out}")
+    out.write_parquet(args.output)
+    print(f"Wrote refined tracks to {args.output}")
 
 
 if __name__ == "__main__":

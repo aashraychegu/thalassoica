@@ -25,8 +25,8 @@ join_clauses = []
 
 for i, t in enumerate(tables[1:], start=1):
     alias = f"t{i}"
-    select_cols.append(f'{args.alias}.{row_col} as {t}_row_id')
-    join_clauses.append(f'join "{t}" {alias} on {alias}.{point_col} = t0.{point_col}')
+    select_cols.append(f'{alias}.{row_col} as {t}_row_id')
+    join_clauses.append(f'JOIN "{t}" {alias} ON {alias}.{point_col} = t0.{point_col}')
 
 sql = f"""
 create or replace table "{out_table}" as

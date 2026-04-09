@@ -7,3 +7,5 @@ cdsapikey
 .env*
 *.env
 log*.txt
+.claude
+.claude/*

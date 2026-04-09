@@ -4,16 +4,36 @@ import argparse
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser(prog="downloads netcdf files for tempestextremes")
-parser.add_argument("--dir", default = "./intermediates/era5_mslp")
-parser.add_argument("--startyr",default = 2014)
-parser.add_argument("--endyr", default = 2024)
+parser.add_argument(
+    "--input-dir",
+    default="./intermediates/era5_mslp",
+    help="Input directory for ERA5 MSLP NetCDF files"
+)
+parser.add_argument(
+    "--start-year",
+    default=2014,
+    type=int,
+    help="Start year for data download (default: 2014)"
+)
+parser.add_argument(
+    "--end-year",
+    default=2024,
+    type=int,
+    help="End year for data download (default: 2024)"
+)
+parser.add_argument(
+    "--workers",
+    type=int,
+    default=8,
+    help="Number of parallel download workers (default: 8)"
+)
 
 args = parser.parse_args()
 
-mslpdir = Path(args.dir)
-yr_to_path = {str(yr):mslpdir/f"{str(yr)}_mslp.nc" for yr in range(args.startyr,args.endyr+1)}
+input_dir = Path(args.input_dir)
+output_file = input_dir / "{year}_mslp.nc"
 
-assert mslpdir.exists(), f"{mslpdir} doesn't exist"
+assert input_dir.exists(), f"{input_dir} doesn't exist"
 
 def build_request(yr,path):
     dataset = "reanalysis-era5-single-levels"
@@ -52,7 +72,8 @@ def build_request(yr,path):
 
 client = cdsapi.Client()
 
-for yr,path in tqdm(yr_to_path.items()):
-    print(f"Downloading {yr} to {path}")
-    request_info = build_request(yr,path)
+for yr in tqdm(range(args.start_year, args.end_year + 1)):
+    output_path = output_file.format(year=yr)
+    print(f"Downloading {yr} to {output_path}")
+    request_info = build_request(yr, output_path)
     client.retrieve(request_info["dataset"], request_info["request"]).download(request_info["path"])

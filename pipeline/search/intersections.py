@@ -8,20 +8,21 @@ def bigtext(s: str) -> None:
 
 
 ALWAYS_INCLUDED = {
-    "source_table": "CAST(? AS VARCHAR) as source_table",
-    "id": "s.id as id",
-    "geometry": "s.geometry as geometry",
-    "datetime_start": "s.datetime_start as datetime_start",
-    "point_id": "p.point_id as point_id",
-    "point_datetime": "p.datetime_start as point_datetime",
+    "source_table": "CAST(? AS VARCHAR) AS source_table",
+    "id": "s.id",
+    "geometry": "s.geometry",
+    "datetime_start": "s.datetime_start",
+    "point_id": "p.point_id",
+    "point_datetime": "p.datetime_start",
 }
 
 
-def get_table_columns(con: duckdb.DuckDBPyConnection, table: str) -> set[str]:
-    return set(con.execute(f"SELECT * FROM {table} LIMIT 0").df().columns)
+def get_table_columns(con, table: str) -> set[str]:
+    """Get column names from a table without pandas overhead."""
+    return {row[0] for row in con.execute(f"DESCRIBE {table}").fetchall()}
 
 
-def validate_args(args, parser, con: duckdb.DuckDBPyConnection) -> set[str]:
+def validate_args(args, parser, con):
     # Time-window sanity checks
     if args.before_start < args.before_end:
         parser.error("--before-start must be >= --before-end.")
@@ -50,12 +51,12 @@ def main(args, parser):
 
     sat_cols = validate_args(args, parser, con)
 
-    select_cols = list(ALWAYS_INCLUDED.values())
+    select_cols = [ALWAYS_INCLUDED["source_table"], "s.id", "s.geometry", "s.datetime_start", "p.point_id", "p.datetime_start"]
     for c in args.output_columns:
-        if c in ALWAYS_INCLUDED:
+        if c in ("source_table", "id", "geometry", "datetime_start", "point_id", "point_datetime"):
             continue
         if c in sat_cols:
-            select_cols.append(f"s.{c} as {c}")
+            select_cols.append(f"s.{c}")
         else:
             print(f"WARNING: requested column '{c}' not found in satellite table; ignoring.")
     select_clause = ",\n    ".join(select_cols)
@@ -78,7 +79,9 @@ def main(args, parser):
         datetime + INTERVAL '{args.after_end} hours' as after_window_end,
         "Size_km" / 111.0 as buffer_degrees
     FROM read_parquet('{args.points}');
-
+    
+    ALTER TABLE input_points DROP COLUMN latc, lonc;
+    
     CREATE OR REPLACE TEMP TABLE satellite_filtered AS
     SELECT s.*
     FROM {args.table} s

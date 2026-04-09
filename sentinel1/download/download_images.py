@@ -1,3 +1,4 @@
+import os
 import pycurl
 import polars as pl
 import argparse
@@ -6,8 +7,6 @@ import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
-from sentinelhub import SHConfig, SentinelHubDownloadClient, DownloadRequest
-import os
 from dotenv import load_dotenv
 import copernicus_access_token
 from threading import Lock
@@ -84,11 +83,15 @@ def process_pair(pair):
 # Parallelize the processing
 all_downloads = []
 
-with ThreadPoolExecutor(max_workers=args.search_workers) as executor:
-    futures = {executor.submit(process_pair, pair): pair 
-               for pair in df.iter_rows(named=True)}
+# Faster iteration: access columns directly instead of row-by-row
+ids = df["id"].to_list()
+s3_paths = df["s3_path"].to_list()
 
-    for future in tqdm(as_completed(futures), total=len(df), desc="Building download list"):
+with ThreadPoolExecutor(max_workers=args.search_workers) as executor:
+    futures = {executor.submit(process_pair, {"id": ids[i], "s3_path": s3_paths[i]}): i
+               for i in range(len(ids))}
+
+    for future in tqdm(as_completed(futures), total=len(ids), desc="Building download list"):
         try:
             downloads = future.result()
             all_downloads.extend(downloads)
@@ -134,11 +137,19 @@ def download_file(row):
     raise Exception(f"Failed after {max_retries} attempts")
 
 # Download all files
-with ThreadPoolExecutor(max_workers=args.download_workers) as executor:
-    futures = {executor.submit(download_file, row): row 
-               for row in download_dataframe.iter_rows(named=True)}
+# Faster iteration: access columns directly instead of row-by-row
+folder_names = download_dataframe["folder"].to_list()
+filenames = download_dataframe["filename"].to_list()
+download_urls = download_dataframe["download_url"].to_list()
 
-    for future in tqdm(as_completed(futures), total=len(download_dataframe), desc="Downloading files"):
+with ThreadPoolExecutor(max_workers=args.download_workers) as executor:
+    futures = {executor.submit(download_file, {
+        "folder": folder_names[i],
+        "filename": filenames[i],
+        "download_url": download_urls[i]
+    }): i for i in range(len(folder_names))}
+
+    for future in tqdm(as_completed(futures), total=len(folder_names), desc="Downloading files"):
         try:
             future.result()
         except Exception as e:

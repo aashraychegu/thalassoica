@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import time
+import threading
 from datetime import datetime, timezone, timedelta
 import requests
 from pathlib import Path
@@ -51,15 +52,14 @@ REQUIRED_FIELDS = frozenset([
     "polarisationChannels", "productType", "orbitNumber"
 ])
 
-# Reusable session per worker
-_session = None
+# Thread-local session storage
+_local = threading.local()
 
 def get_session():
-    global _session
-    if _session is None:
-        _session = requests.Session()
-        _session.headers.update({'Connection': 'keep-alive'})
-    return _session
+    if not hasattr(_local, 'session'):
+        _local.session = requests.Session()
+        _local.session.headers.update({'Connection': 'keep-alive'})
+    return _local.session
 
 # ==============================================================================
 # PARSING - OPTIMIZED
@@ -69,11 +69,15 @@ def parse_data_fast(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Optimized parsing - works directly with dict, no JSON serialization"""
     result = {}
     
-    # Direct key extraction
-    for key in ['Id', 'Name', 'S3Path', 'Footprint']:
-        val = data.get(key)
-        if val not in (None, ''):
-            result[key] = val
+    # Direct key extraction using dict comprehension
+    result.update({
+        key: val for key, val in {
+            'Id': data.get('Id'),
+            'Name': data.get('Name'),
+            'S3Path': data.get('S3Path'),
+            'Footprint': data.get('Footprint'),
+        }.items() if val}
+    )
     
     # ContentDate
     cd = data.get('ContentDate')
@@ -85,15 +89,14 @@ def parse_data_fast(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if end not in (None, ''):
             result['ContentDate_End'] = end
     
-    # Attributes - fast dict creation
+    # Attributes - fast dict extraction
     attrs = data.get('Attributes')
     if attrs:
         for attr in attrs:
             name = attr.get('Name')
-            if name:
-                val = attr.get('Value')
-                if val not in (None, ''):
-                    result[name] = val
+            val = attr.get('Value')
+            if name and val:
+                result[name] = val
     
     # Quick validation of required fields
     for key in REQUIRED_FIELDS:
