@@ -150,7 +150,7 @@ download_swot() {
 }
 
 # Function to convert SWOT
-convert_swot() {
+extract_swot() {
     echo "  Converting SWOT to parquet index..."
     uv run "${SCRIPT_DIR}/swot/extract/extract_netcdf_to_parquet.py" \
         --input-dir "${SCRIPT_DIR}/intermediates/swot" \
@@ -163,7 +163,7 @@ convert_swot() {
 run_swot() {
     echo "====== SWOT ======"
     download_swot
-    convert_swot
+    extract_swot
     echo "====== SWOT COMPLETE ======"
 }
 
@@ -198,7 +198,7 @@ filter_product_type() {
 
 # Function to find intersections
 find_intersections() {
-    uv run "${SCRIPT_DIR}/pipeline/find/intersections.py" \
+    uv run "${SCRIPT_DIR}/pipeline/search/intersections.py" \
         --db "${DB_FILE}" \
         --table sentinel \
         --points "${SCRIPT_DIR}/intermediates/te_out/tracks_mslp_refined.parquet"
@@ -206,7 +206,7 @@ find_intersections() {
 
 # Function to find overlaps
 find_overlaps() {
-    uv run "${SCRIPT_DIR}/pipeline/find/overlaps.py" \
+    uv run "${SCRIPT_DIR}/pipeline/search/overlaps.py" \
         --db "${DB_FILE}" \
         --matches-table sentinel_matches \
         --output-table sentinel_matches_overlaps
@@ -217,7 +217,7 @@ filter_overlap() {
     uv run "${SCRIPT_DIR}/pipeline/filter/overlap_percentage.py" \
         --db "${DB_FILE}" \
         --in-table sentinel_matches_overlaps \
-        --min-overlap 10 \
+        --min-overlap 15 \
         --max-overlap 100
 }
 
@@ -345,7 +345,7 @@ while true; do
 
             case $subchoice in
                 a) download_swot ;;
-                b) convert_swot ;;
+                b) extract_swot ;;
                 3) run_swot ;;
                 *) echo "Invalid choice";;
             esac

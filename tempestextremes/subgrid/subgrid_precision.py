@@ -7,6 +7,8 @@ import xarray as xr
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+# Constant for iterative refinement: how much smaller the search radius gets each time
+REFINEMENT_FACTOR = 3
 
 def refine_centers_xr_interp(mslp_slice, clats, clons, dlat, dlon, method="cubic"):
     clats = np.asarray(clats, float)
@@ -49,7 +51,7 @@ def ensure_zarr_intermediate(mslp_glob: str, zarr_path: str, time_chunk: int = 1
     return zarr_path
 
 
-def worker_one_time(store_path, store_kind, t, idxs, clats, clons, dlat, dlon, method):
+def worker_one_time(store_path, store_kind, t, idxs, clats, clons, initial_search_radius, theta_pts, method, refine_iter):
     # open inside worker so each process has its own handles
     if store_kind == "zarr":
         ds = xr.open_zarr(store_path, consolidated=True)
@@ -57,9 +59,37 @@ def worker_one_time(store_path, store_kind, t, idxs, clats, clons, dlat, dlon, m
         ds = xr.open_mfdataset(store_path, combine="by_coords")
 
     mslp_slice = ds["msl"].sel(valid_time=t, method="nearest")
-    new_lats, new_lons = refine_centers_xr_interp(mslp_slice, clats, clons, dlat, dlon, method=method)
+    
+    # Initialize current coordinates with the input centers
+    curr_lats = clats
+    curr_lons = clons
+    
+    # Calculate initial coarse search radius (3x larger than the final small radius)
+    search_radius = initial_search_radius * 3
+    
+    for _ in range(refine_iter):
+        if search_radius < 0.01: # Stop refining if search radius is very small
+            break
+
+        # Generate radial and theta grids for this iteration
+        # We use fewer radial points in subsequent iterations for speed (e.g., 10)
+        r_vals = np.linspace(0, search_radius, 10)
+        theta = np.linspace(0, 2 * np.pi, theta_pts, endpoint=False)
+        
+        r_grid, t_grid = np.meshgrid(r_vals, theta)
+        dlat = (r_grid * np.sin(t_grid)).ravel()
+        dlon = (r_grid * np.cos(t_grid)).ravel()
+
+        # Perform the search
+        new_lats, new_lons = refine_centers_xr_interp(mslp_slice, curr_lats, curr_lons, dlat, dlon, method=method)
+        
+        # Update coordinates and shrink search radius
+        curr_lats = new_lats
+        curr_lons = new_lons
+        search_radius /= REFINEMENT_FACTOR
+
     ds.close()
-    return idxs, new_lats, new_lons
+    return idxs, curr_lats, curr_lons
 
 
 def main():
@@ -89,18 +119,12 @@ def main():
         "--radius",
         type=float,
         default=0.125,
-        help="Search radius in degrees for MSLP interpolation (default: 0.125)"
-    )
-    parser.add_argument(
-        "--nr",
-        type=int,
-        default=10,
-        help="Number of radial points (default: 10)"
+        help="Minimum search radius (degrees) for final refinement (default: 0.125)"
     )
     parser.add_argument(
         "--ntheta",
         type=int,
-        default=64,
+        default=24,
         help="Number of theta points (default: 64)"
     )
     parser.add_argument(
@@ -120,14 +144,29 @@ def main():
         default=1,
         help="Chunk size along valid_time when creating zarr (default 1).",
     )
+    parser.add_argument(
+        "--refine-iter",
+        type=int,
+        default=3,
+        help="Number of refinement iterations (default: 3)"
+    )
 
     args = parser.parse_args()
 
     tracks = pl.read_parquet(args.input_file)
 
-    # candidate offsets
-    radius = np.linspace(0, args.radius, args.nr)
-    theta = np.linspace(0, 2 * np.pi, args.ntheta, endpoint=False)
+    # Iterative refinement parameters
+    refine_iter = args.refine_iter
+    theta_pts = args.ntheta
+    
+    # Initial search radius is the 'radius' arg multiplied by the factor (e.g. 0.125 * 3 = 0.375)
+    initial_search_radius = args.radius * REFINEMENT_FACTOR
+
+    # Candidate generation (used once to pre-load, though actual grid generation is now iterative)
+    # Note: Since we iterate, we can reduce the size of this initial grid significantly 
+    # or generate it dynamically. Keeping the original structure here for consistency.
+    radius = np.linspace(0, initial_search_radius, 10)
+    theta = np.linspace(0, 2 * np.pi, theta_pts, endpoint=False)
     r_grid, t_grid = np.meshgrid(radius, theta)
     dlat = (r_grid * np.sin(t_grid)).ravel()
     dlon = (r_grid * np.cos(t_grid)).ravel()
@@ -146,7 +185,7 @@ def main():
     items = list(time_to_idxs.items())
 
     print(f"Unique Datetime Tracks: {len(items)}")
-    print(f"Using {args.workers} workers; candidates per center: {dlat.size}; method={args.method}")
+    print(f"Using {args.workers} workers; Refinement Iterations: {refine_iter}; Method={args.method}")
 
     # choose data source: zarr if provided, else netcdf glob
     if args.zarr_intermediate:
@@ -171,13 +210,14 @@ def main():
                     idxs,
                     lats0[idxs],
                     lons0[idxs],
-                    dlat,
-                    dlon,
+                    initial_search_radius,
+                    theta_pts,
                     args.method,
+                    refine_iter,
                 )
             )
 
-        for fut in tqdm(as_completed(futures), total=len(futures), desc="Refining (parallel by time)"):
+        for fut in tqdm(as_completed(futures), total=len(futures), desc="Refining (iterative)"):
             idxs, new_lats, new_lons = fut.result()
             refined_lats[idxs] = new_lats
             refined_lons[idxs] = new_lons
