@@ -8,6 +8,7 @@ mkdir era5_mslp
 mkdir seaice_concentrations
 mkdir shapes
 mkdir shapes/sentinel1
+mkdir shapes/swot
 mkdir swot
 mkdir stitchnodes
 mkdir te_out
