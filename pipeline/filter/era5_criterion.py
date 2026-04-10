@@ -173,8 +173,8 @@ def filter_overlaps_batched_vectorized(
         year = int(year)
         nc_path = year_to_path[year]
 
-        var_name = netcdf_var or xr.open_dataset(nc_path).data_vars[0]
-        da = xr.open_dataarray(nc_path, var_name)
+        var_name = netcdf_var or list(xr.open_dataset(nc_path).data_vars.keys())[0]
+        da = xr.open_dataarray(nc_path)
         da.load()
 
         var_values = da.values  # Shape: (time, lat, lon)

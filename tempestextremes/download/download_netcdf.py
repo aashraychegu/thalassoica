@@ -31,7 +31,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 input_dir = Path(args.input_dir)
-output_file = input_dir / "{year}_mslp.nc"
 
 assert input_dir.exists(), f"{input_dir} doesn't exist"
 
@@ -73,7 +72,7 @@ def build_request(yr,path):
 client = cdsapi.Client()
 
 for yr in tqdm(range(args.start_year, args.end_year + 1)):
-    output_path = output_file.format(year=yr)
+    output_path = input_dir / f"{yr}_mslp.nc"
     print(f"Downloading {yr} to {output_path}")
     request_info = build_request(yr, output_path)
     client.retrieve(request_info["dataset"], request_info["request"]).download(request_info["path"])

@@ -80,7 +80,8 @@ def main(args, parser):
         "Size_km" / 111.0 as buffer_degrees
     FROM read_parquet('{args.points}');
     
-    ALTER TABLE input_points DROP COLUMN latc, lonc;
+    ALTER TABLE input_points DROP COLUMN latc;
+    ALTER TABLE input_points DROP COLUMN lonc;
     
     CREATE OR REPLACE TEMP TABLE satellite_filtered AS
     SELECT s.*
