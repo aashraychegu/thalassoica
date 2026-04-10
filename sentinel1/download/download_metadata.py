@@ -20,7 +20,7 @@ from typing import Optional, Dict, Any, List, Tuple
 DEFAULT_START_DATE = datetime(2014, 1, 1, tzinfo=timezone.utc)
 DEFAULT_END_DATE = datetime.now(timezone.utc)
 DEFAULT_AREA_OF_INTEREST_WKT = "POLYGON((-180 -80, 180 -80, 180 -60, -180 -60, -180 -80))"
-DEFAULT_OUTPUT_DIR = Path("intermediates/shapes/sentinel")
+DEFAULT_OUTPUT_DIR = Path("intermediates/shapes/sentinel1")
 API_URL_BASE = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
 DEFAULT_ITEMS_PER_REQUEST = 1000
 DEFAULT_NUM_WORKERS = 16
@@ -297,7 +297,7 @@ if __name__ == "__main__":
     if args.output_file:
         OUTPUT_PARQUET_FILE = OUTPUT_DIR / args.output_file
     else:
-        OUTPUT_PARQUET_FILE = OUTPUT_DIR / f"sentinel_{START_DATE.strftime('%Y%m%d')}_to_{END_DATE.strftime('%Y%m%d')}.parquet"
+        OUTPUT_PARQUET_FILE = OUTPUT_DIR / f"sentinel1_{START_DATE.strftime('%Y%m%d')}_to_{END_DATE.strftime('%Y%m%d')}.parquet"
     
     OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
     

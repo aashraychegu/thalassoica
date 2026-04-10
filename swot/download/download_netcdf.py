@@ -17,7 +17,7 @@ parser.add_argument(
 parser.add_argument(
     "--output-dir",
     type=Path,
-    default=Path("intermediates/shapes/swot"),
+    default=Path("intermediates/swot"),
     help="Output directory for downloaded files"
 )
 parser.add_argument(

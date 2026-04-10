@@ -8,12 +8,12 @@ def bigtext(s: str) -> None:
 
 
 ALWAYS_INCLUDED = {
-    "source_table": "CAST(? AS VARCHAR) AS source_table",
-    "id": "s.id",
-    "geometry": "s.geometry",
-    "datetime_start": "s.datetime_start",
-    "point_id": "p.point_id",
-    "point_datetime": "p.datetime_start",
+    "source_table": "CAST(? AS VARCHAR) as source_table",
+    "id": "s.id as id",
+    "geometry": "s.geometry as geometry",
+    "datetime_start": "s.datetime_start as datetime_start",
+    "point_id": "p.point_id as point_id",
+    "point_datetime": "p.datetime_start as point_datetime",
 }
 
 
@@ -51,12 +51,15 @@ def main(args, parser):
 
     sat_cols = validate_args(args, parser, con)
 
-    select_cols = [ALWAYS_INCLUDED["source_table"], "s.id", "s.geometry", "s.datetime_start", "p.point_id", "p.datetime_start"]
+    # Correctly build the list of columns for the SELECT clause
+    select_cols = list(ALWAYS_INCLUDED.values())
     for c in args.output_columns:
-        if c in ("source_table", "id", "geometry", "datetime_start", "point_id", "point_datetime"):
+        # Check if the column alias is already defined in ALWAYS_INCLUDED
+        if c in ALWAYS_INCLUDED:
             continue
         if c in sat_cols:
-            select_cols.append(f"s.{c}")
+            # Append the fully qualified column name with an alias
+            select_cols.append(f"s.{c} AS {c}")
         else:
             print(f"WARNING: requested column '{c}' not found in satellite table; ignoring.")
     select_clause = ",\n    ".join(select_cols)

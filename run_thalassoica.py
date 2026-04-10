@@ -5,13 +5,6 @@ import sys
 import subprocess
 from pathlib import Path
 
-try:
-    import inquirer
-except ImportError:
-    print("Installing inquirer...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "inquirer"], check=True)
-    import inquirer
-
 # Colors
 class Colors:
     RED = '\033[0;31m'
@@ -59,6 +52,8 @@ def show_menu():
     print("      4g - Export UUIDs")
     print()
     print(f"  {Colors.YELLOW}ALL{Colors.NC} - Run all steps (tempestextremes -> sentinel -> swot -> pipeline)")
+    print(f"  {Colors.YELLOW}CUSTOM ({Colors.NC}c{Colors.YELLOW}){Colors.NC} [steps] - Run a custom sequence of steps (e.g., c 1a 1b)")
+    print(f"  {Colors.YELLOW}SECTION ({Colors.NC}1,2,3,4{Colors.YELLOW}){Colors.NC} Run a single subsection")
     print(f"  {Colors.YELLOW}SKIP{Colors.NC} - Skip a completed step")
     print(f"  {Colors.YELLOW}RESTART{Colors.NC} - Clear intermediates and restart")
     print()
@@ -77,7 +72,7 @@ class Runner:
 
         try:
             result = subprocess.run(cmd, shell=True, check=True)
-            print(f"{Colors.GREEN}SUCCESS: {step_name}{Colors.NC}")
+            print(f"{Colors.GREEN}SUCCESS: {step_name}{Colors.NC}\n{'='*60}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"{Colors.RED}FAILED: {step_name}{Colors.NC}")
@@ -168,7 +163,7 @@ class Runner:
         print(f"  Loading Sentinel-1 data...")
         self.run_cmd(
             f'uv run "{self.script_dir}/pipeline/utils/load_parquet.py" '
-            f'--input-parquet "{self.script_dir}/intermediates/shapes/sentinel/sentinel_*.parquet" '
+            f'--input-parquet "{self.script_dir}/intermediates/shapes/sentinel1/sentinel1_*.parquet" '
             f'--table-name sentinel1 --output-db "{self.db_file}"',
             "Loading Sentinel-1 into DuckDB", "load_sentinel")
 
@@ -181,7 +176,7 @@ class Runner:
     def find_intersections(self):
         self.run_cmd(
             f'uv run "{self.script_dir}/pipeline/search/intersections.py" '
-            f'--db "{self.db_file}" --table sentinel1 '
+            f'--db "{self.db_file}" --table sentinel1__product_filtered '
             f'--points "{self.script_dir}/intermediates/te_out/tracks_mslp_refined.parquet"',
             "Finding cyclone-satellite intersections - Sentinel", "find_intersections")
 
@@ -194,8 +189,8 @@ class Runner:
     def find_overlaps(self):
         self.run_cmd(
             f'uv run "{self.script_dir}/pipeline/search/overlaps.py" '
-            f'--db "{self.db_file}" --matches-table sentinel1_matches '
-            f'--output-table sentinel1_matches_overlaps',
+            f'--db "{self.db_file}" --matches-table sentinel1__product_filtered_matches '
+            f'--output-table sentinel1__product_filtered_matches_overlaps',
             "Computing geometry overlaps", "find_overlaps")
         
         self.run_cmd(
@@ -207,7 +202,7 @@ class Runner:
     def filter_overlap(self):
         self.run_cmd(
             f'uv run "{self.script_dir}/pipeline/filter/overlap_percentage.py" '
-            f'--db "{self.db_file}" --in-table sentinel1_matches_overlaps '
+            f'--db "{self.db_file}" --in-table sentinel1__product_filtered_matches_overlaps '
             f'--min-overlap 15 --max-overlap 100',
             "Filtering by overlap percentage", "filter_overlap")
         
@@ -219,35 +214,35 @@ class Runner:
 
         
     def filter_era5(self):
-        return self.run_cmd(
+        self.run_cmd(
             f'uv run "{self.script_dir}/pipeline/filter/era5_criterion.py" '
             f'--db "{self.db_file}" '
-            f'--input-table sentinel1_matches_overlaps__overlap_filtered '
+            f'--input-table sentinel1__product_filtered_matches_overlaps__overlap_filtered '
             f'--key-dotenv "{self.script_dir}/copernicus_api_key.env" '
-            f'--era5-variable sea_ice_cover --threshold 0.15 --lookup-method vectorized',
+            f'--era5-variable sea_ice_cover --threshold 0.15',
             "Filtering by ERA5 criterion", "filter_era5")
         
-        return self.run_cmd(
+        self.run_cmd(
             f'uv run "{self.script_dir}/pipeline/filter/era5_criterion.py" '
             f'--db "{self.db_file}" '
             f'--input-table swot_matches_overlaps__overlap_filtered '
             f'--key-dotenv "{self.script_dir}/copernicus_api_key.env" '
-            f'--era5-variable sea_ice_cover --threshold 0.15 --lookup-method vectorized',
+            f'--era5-variable sea_ice_cover --threshold 0.15',
             "Filtering by ERA5 criterion", "filter_era5")
 
     def export_uuids(self):
         self.run_cmd(
             f'uv run "{self.script_dir}/sentinel1/export/download_information.py" '
             f'--db "{self.db_file}" '
-            f'--overlaps-table sentinel1_matches_overlaps__overlap_filtered__era5_filtered '
-            f'--output "{self.script_dir}/intermediates/sentinel_download_uuids.parquet"',
+            f'--overlaps-table sentinel1__product_filtered_matches_overlaps__overlap_filtered__era5_filtered '
+            f'--output "{self.script_dir}/intermediates/uuids/sentinel_download_uuids.parquet"',
             "Exporting UUIDs", "export_uuids")
         
         self.run_cmd(
             f'uv run "{self.script_dir}/swot/export/download_information.py" '
             f'--db "{self.db_file}" '
             f'--overlaps-table swot_matches_overlaps__overlap_filtered__era5_filtered '
-            f'--output "{self.script_dir}/intermediates/swot_download_uuids.parquet"',
+            f'--output "{self.script_dir}/intermediates/uuids/swot_download_uuids.parquet"',
             "Exporting UUIDs", "export_uuids")
 
     def run_pipeline(self):
@@ -392,41 +387,55 @@ def run_interactive_menu(runner):
         show_menu()
 
         try:
-            choices = [
-                inquirer.List('choice', message="Action", choices=[
-                    ("1 - TEMPEST EXTREMES (full pipeline)", "1"),
-                    ("2 - SENTINEL-1 (full pipeline)", "2"),
-                    ("3 - SWOT (full pipeline)", "3"),
-                    ("4 - PIPELINE (full pipeline)", "4"),
-                    ("ALL - Run all steps", "ALL"),
-                    ("SKIP - Skip a completed step", "SKIP"),
-                    ("RESTART - Clear intermediates", "RESTART"),
-                    ("Run custom steps (e.g., 1a, 2a, 3b, 4c)", "CUSTOM"),
-                    ("q - Quit", "q"),
-                ])
-            ]
-            answers = inquirer.prompt(choices)
-            choice = answers.get('choice')
+            line = input("Enter your choice: ").strip()
+            if not line:
+                continue
 
-            if choice == '1':
-                run_tempestextremes_menu(runner)
-            elif choice == '2':
-                run_sentinel_menu(runner)
-            elif choice == '3':
-                run_swot_menu(runner)
-            elif choice == '4':
-                run_pipeline_menu(runner)
-            elif choice == 'ALL':
-                runner.run_all()
-            elif choice == 'SKIP':
-                runner.skip_step()
-            elif choice == 'RESTART':
-                runner.restart_all()
-            elif choice == 'CUSTOM':
-                run_custom_steps_menu(runner)
-            elif choice in ['q', 'Q']:
-                print("Goodbye!")
-                sys.exit(0)
+            parts = line.split()
+            command = parts[0]
+            args = parts[1:]
+            command_lower = command.lower()
+
+            if command_lower in ['c', 'custom']:
+                if args:
+                    print(f"\n{Colors.YELLOW}Running custom steps: {' '.join(args)}{Colors.NC}")
+                    runner.run_batch_steps(args)
+                else:
+                    # If only 'c' or 'custom' is entered, go to the interactive step entry
+                    run_custom_steps_menu(runner)
+                continue
+
+            command_upper = command.upper()
+
+            if len(parts) == 1:
+                if command_upper == '1':
+                    run_tempestextremes_menu(runner)
+                    continue
+                elif command_upper == '2':
+                    run_sentinel_menu(runner)
+                    continue
+                elif command_upper == '3':
+                    run_swot_menu(runner)
+                    continue
+                elif command_upper == '4':
+                    run_pipeline_menu(runner)
+                    continue
+                elif command_upper == 'ALL':
+                    runner.run_all()
+                    continue
+                elif command_upper == 'SKIP':
+                    runner.skip_step()
+                    continue
+                elif command_upper == 'RESTART':
+                    runner.restart_all()
+                    continue
+                elif command_lower in ['q', 'quit']:
+                    print("Goodbye!")
+                    sys.exit(0)
+
+            # If none of the single commands match, or there are multiple parts,
+            # assume it's a list of batch steps. This allows '1a 1b ...'
+            runner.run_batch_steps(parts)
 
         except KeyboardInterrupt:
             print("\n\nExiting...")
@@ -453,11 +462,6 @@ def run_pipeline_menu(runner):
 
 def run_custom_steps_menu(runner):
     print()
-    print(f"Enter steps to run (comma-separated or space-separated):")
-    print("  Examples: 1a, 2a, 3b, 4c")
-    print("            1 2 3 4")
-    print("            1a 1b 1c 4a 4b 4c")
-    print()
 
     try:
         steps_input = input(f"Steps {Colors.NC}: ").strip()
@@ -480,7 +484,7 @@ def run_custom_steps_menu(runner):
 
     except KeyboardInterrupt:
         print("\nOperation cancelled.")
-    except KeyboardInterrupt:
+    except EOFError:
         print("\nGoodbye!")
         sys.exit(0)
 

@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""Export SWOT download information from a parquet index."""
 import argparse
 import duckdb
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description='Export SWOT download information from a parquet index',
+        description='Export UUIDs for download from an overlaps table'
     )
     parser.add_argument(
         '--db',
         required=True,
-        help='Path to the DuckDB database file containing the SWOT parquet table.',
+        help='Path to the DuckDB database file containing the overlaps and source tables.',
     )
     parser.add_argument(
-        '--input-table',
+        '--overlaps-table',
         required=True,
-        help='Name of the SWOT parquet table to export.',
+        help='Name of the overlaps table to process.',
     )
     parser.add_argument(
         '--output',
@@ -26,8 +25,8 @@ def main() -> None:
     parser.add_argument(
         '--output-columns',
         nargs='+',
-        default=['path', "start_idx", "end_idx"],
-        help='Columns to output from the SWOT table (default: path). Can specify multiple columns.',
+        default=['path', 'start_idx', 'end_idx'],
+        help='Can specify multiple columns.',
     )
     parser.add_argument(
         '--csv',
@@ -43,35 +42,68 @@ def main() -> None:
     con.execute(f"SET threads TO {args.threads}")
     con.execute(f"SET memory_limit = '{args.memory_limit}'")
 
+    # First, get the source_table value (assuming all rows have the same source_table)
+    source_table_result = con.execute(
+        f"SELECT DISTINCT source_table FROM {args.overlaps_table} LIMIT 1"
+    ).fetchone()
+    
+    if not source_table_result:
+        raise ValueError(f"No source_table found in {args.overlaps_table}")
+    
+    source_table = source_table_result[0]
+
     # Validate that the requested columns exist in the source table
     available_columns_result = con.execute(
-        f"SELECT column_name FROM information_schema.columns WHERE table_name = '{args.input_table}'"
+        f"SELECT column_name FROM information_schema.columns WHERE table_name = '{source_table}'"
     ).fetchall()
     available_columns = {col[0] for col in available_columns_result}
-
+    
+    
     for col in args.output_columns:
         if col not in available_columns:
             raise ValueError(
-                f"Column '{col}' not found in source table '{args.input_table}'. "
+                f"Column '{col}' not found in source table '{source_table}'. "
                 f"Available columns: {', '.join(sorted(available_columns))}"
             )
 
     # Build the SELECT clause for output columns
-    output_column_select = ',\n        '.join([f'{col}' for col in args.output_columns])
+    output_column_select = ',\n        '.join([f's.{col}' for col in args.output_columns])
 
     sql = f"""
-    SELECT
+    WITH 
+        -- Step 1: Unpivot the 'before' and 'after' columns into a consistent stream of records.
+        unpivoted_data AS (
+            SELECT 
+                id_before AS id,
+                datetime_start_before AS start_datetime
+            FROM {args.overlaps_table}
+            WHERE id_before IS NOT NULL
+
+            UNION ALL
+
+            SELECT 
+                id_after AS id,
+                datetime_start_after AS start_datetime
+            FROM {args.overlaps_table}
+            WHERE id_after IS NOT NULL
+        )
+
+    -- Step 2: Join with the source table to get requested columns.
+    SELECT 
+        u.id,
+        u.start_datetime,
         {output_column_select}
-    FROM {args.input_table}
-    ORDER BY datetime_start, id
+    FROM unpivoted_data u
+    LEFT JOIN {source_table} s ON u.id = s.id
+    ORDER BY start_datetime, u.id
     """
 
     if args.verbose:
-        print(f"Input table: {args.input_table}")
+        print(f"Source table: {source_table}")
         print(f"Output columns: {', '.join(args.output_columns)}")
         print(sql)
 
-    print(f"Loading table: {args.input_table}")
+    print(f"Loading overlaps table: {args.overlaps_table}")
     print(f"Output columns: {', '.join(args.output_columns)}")
     print(f"Processing records and exporting to {args.output}...")
 
@@ -85,7 +117,7 @@ def main() -> None:
 
     # Get row count for summary
     row_count = con.execute(f"SELECT COUNT(*) FROM ({sql})").fetchone()[0]
-
+    
     print(f"\nExported {row_count} records to: {args.output} ({format_type})")
 
 

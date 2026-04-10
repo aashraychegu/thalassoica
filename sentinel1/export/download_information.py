@@ -58,6 +58,7 @@ def main() -> None:
     ).fetchall()
     available_columns = {col[0] for col in available_columns_result}
     
+    
     for col in args.output_columns:
         if col not in available_columns:
             raise ValueError(
