@@ -36,4 +36,5 @@ dependencies = [
     "gcsfs>=2026.3.0",
     "asyncio>=4.0.0",
     "gdal>=3.12.3",
+    "rioxarray>=0.22.0",
 ]

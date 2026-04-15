@@ -9,3 +9,5 @@ cdsapikey
 log*.txt
 .claude
 .claude/*
+*.tiff
+*.tiff

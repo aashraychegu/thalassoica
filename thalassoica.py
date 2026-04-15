@@ -297,8 +297,7 @@ def download_sentinel(ctx: Ctx) -> bool:
     )
 
 def swot_to_images(ctx: Ctx) -> bool:
-    print("Not Implemented Yet")
-    return True
+    return run_cmd(f"uv run {ctx.script_dir}/swot/convert/netcdf_to_tiff.py", "Reformat SWOT Data", "reformat_swot", )
 
 def setup_intermediates(ctx: Ctx) -> bool:
     return run_cmd("sh setup_intermediates.sh","Setting up Intermediates","setup_intermediates",)
